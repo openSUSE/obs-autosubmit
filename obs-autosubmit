@@ -657,6 +657,11 @@ class AutoSubmitWorker:
         if package.project in [ 'GNOME:Factory', 'GNOME:Apps' ]:
             return False
 
+        # Requested by Richard Guenther
+        # http://lists.opensuse.org/opensuse-packaging/2012-01/msg00193.html
+        if package.project == 'devel:gcc' or (package.project == 'devel:libraries:c_c++' and package.package in [ 'cloog', 'gmp', 'mpc', 'mpfr', 'ppl' ]):
+            return False
+
         return True
 
 
