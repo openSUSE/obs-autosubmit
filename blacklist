@@ -1,0 +1,11 @@
+# Requested by vuntz
+GNOME:Factory
+GNOME:Apps
+# Requested by Richard Guenther
+# http://lists.opensuse.org/opensuse-packaging/2012-01/msg00193.html
+devel:gcc
+devel:libraries:c_c++/cloog
+devel:libraries:c_c++/gmp
+devel:libraries:c_c++/mpc
+devel:libraries:c_c++/mpfr
+devel:libraries:c_c++/ppl

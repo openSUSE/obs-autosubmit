@@ -486,11 +486,40 @@ class AutoSubmitWorker:
 
     def __init__(self, conf):
         self.conf = conf
+        self._blacklisted_projects = []
+        self._blacklisted_packages = []
 
 
     def _verbose_print(self, s, level = 1):
         if self.conf.verbose >= level:
             print s
+
+
+    def _read_blacklist(self):
+        # reinit blacklist
+        self._blacklisted_projects = []
+        self._blacklisted_packages = []
+
+        blacklist_file = os.path.join(os.path.dirname(__file__), 'blacklist')
+        fd = open(blacklist_file, 'r')
+        lines = fd.readlines()
+        fd.close()
+
+        for line in lines:
+            line = line.strip()
+            if not line or line.startswith('#'):
+                continue
+
+            items = line.split('/')
+
+            if len(items) > 2:
+                print >>sys.stderr, 'Ignoring weird blacklist line: %s' % line
+                continue
+
+            if len(items) == 1 or not items[1]:
+                self._blacklisted_projects.append(items[0])
+            else:
+                self._blacklisted_packages.append('%s/%s' % (items[0], items[1]))
 
 
     def _fetch_packages_with_diff(self):
@@ -654,12 +683,10 @@ class AutoSubmitWorker:
         '''
 #TODO if there is an attribute, properly check for it, with some cache. Right now, we hardcode a blacklist...
 
-        if package.project in [ 'GNOME:Factory', 'GNOME:Apps' ]:
+        if package.project in self._blacklisted_projects:
             return False
 
-        # Requested by Richard Guenther
-        # http://lists.opensuse.org/opensuse-packaging/2012-01/msg00193.html
-        if package.project == 'devel:gcc' or (package.project == 'devel:libraries:c_c++' and package.package in [ 'cloog', 'gmp', 'mpc', 'mpfr', 'ppl' ]):
+        if str(package) in self._blacklisted_packages:
             return False
 
         return True
@@ -780,6 +807,22 @@ class AutoSubmitWorker:
 
     def run(self):
         self._cache = AutoSubmitCache(self.conf)
+
+        self._read_blacklist()
+        if self.conf.debug:
+            print '#####################################################'
+            print '%d blacklisted projects' % len(self._blacklisted_projects)
+            print '#####################################################'
+            for project in self._blacklisted_projects:
+                print project
+            print ''
+
+            print '#####################################################'
+            print '%d blacklisted packages' % len(self._blacklisted_packages)
+            print '#####################################################'
+            for package in self._blacklisted_packages:
+                print package
+            print ''
 
         self._fetch_packages_with_diff()
         if self.conf.debug:
