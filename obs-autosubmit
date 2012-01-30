@@ -793,16 +793,16 @@ class AutoSubmitWorker:
     def _do_auto_submit(self, devel_package, parent_package):
         if self.conf.debug:
             self._verbose_print('Pretending to submit %s to %s (debug mode)' % (devel_package, parent_package))
-            return True
+            return 0
 
         self._verbose_print('Submitting %s to %s' % (devel_package, parent_package))
         try:
             id = create_submit_request(self.conf.apiurl, devel_package.project, devel_package.package, devel_package.rev, parent_package.project, parent_package.package)
             self._verbose_print('Submitted %s to %s: %s' % (devel_package, parent_package, id), level = 2)
-            return True
+            return id
         except Exception, e:
             print >>sys.stderr, 'Failed to submit %s to %s: %s' (devel_package, parent_package, e)
-        return False
+        return 0
 
 
     def run(self):
@@ -866,7 +866,8 @@ class AutoSubmitWorker:
                     else:
                         if self.conf.debug:
                             print 'Submitting %s -> %s' % (str(devel_package), str(parent_package))
-                        if self._do_auto_submit(devel_package, parent_package):
+                        sr_id = self._do_auto_submit(devel_package, parent_package)
+                        if sr_id > 0:
                             update_cache = True
                 except Exception, e:
                     print >>sys.stderr, 'Failed to deal with %s to %s: %s' % (devel_package, parent_package, e)
