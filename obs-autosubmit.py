@@ -1,7 +1,8 @@
+#!/usr/bin/env python
 # vim: set ts=4 sw=4 et: coding=UTF-8
 
 #
-# Copyright (c) 2011, Novell, Inc.
+# Copyright (c) 2011-2012, SUSE, Inc.
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -37,17 +38,15 @@
 import os
 import sys
 
-import cgi
 import errno
-import operator
+
 import optparse
 import re
+import sqlite3
 import traceback
 import urllib
 import urllib2
-
-import osc_copy
-from util import safe_mkdir_p
+import urlparse
 
 try:
     from lxml import etree as ET
@@ -58,13 +57,35 @@ except ImportError:
         import cElementTree as ET
 
 
-NO_DEVEL_PACKAGE_SAFE_REGEXP = [ '^_product.*' ]
+from osc import conf as oscconf
+from osc import core
+
+
+NO_DEVEL_PACKAGE_SAFE = [ '^_product.*' ]
+
+# Not sure why, but it seems there's some black magic for this specific
+# package: it's a link to openSUSE:Factory/glibc, but it's different
+INTERNAL_LINK_DIFFERENT_HASH_SAFE = [ 'openSUSE:Factory/glibc.i686' ]
 
 
 #######################################################################
 
 
-NO_DEVEL_PACKAGE_SAFE_REGEXP = [ re.compile(x) for x in NO_DEVEL_PACKAGE_SAFE_REGEXP ]
+NO_DEVEL_PACKAGE_SAFE_REGEXP = [ re.compile(x) for x in NO_DEVEL_PACKAGE_SAFE ]
+
+
+#######################################################################
+
+
+def safe_mkdir_p(dir):
+    if not dir:
+        return
+
+    try:
+        os.makedirs(dir)
+    except OSError, e:
+        if e.errno != errno.EEXIST:
+            raise e
 
 
 #######################################################################
@@ -75,6 +96,7 @@ class AutoSubmitException(Exception):
 
 class AutoSubmitUnlikelyException(AutoSubmitException):
     pass
+
 
 #######################################################################
 
@@ -93,11 +115,10 @@ class AutoSubmitConfig:
 
 
 def fetch_status_for_project(apiurl, project):
-    return ET.parse('/tmp/vuntz-random/factory-status.xml').getroot()
-    url = osc_copy.makeurl(apiurl, ['status', 'project', project])
+    url = core.makeurl(apiurl, ['status', 'project', project])
 
     try:
-        fin = http_GET(url)
+        fin = core.http_GET(url)
     except urllib2.HTTPError, e:
         raise AutoSubmitException('Cannot get status of %s: %s' % (project, e))
 
@@ -115,37 +136,51 @@ def fetch_status_for_project(apiurl, project):
 #######################################################################
 
 
-def fetch_search_results(apiurl, xpath):
-    return ET.parse('/tmp/vuntz-random/factory-requests.xml').getroot()
-    url = osc_copy.makeurl(apiurl, ['search', 'request'], ['match=%s' % urllib.quote_plus(xpath)])
+def fetch_requests(apiurl, xpath):
+    url = core.makeurl(apiurl, ['search', 'request'], ['match=%s' % urllib.quote_plus(xpath)])
 
     try:
-        fin = http_GET(url)
+        fin = core.http_GET(url)
     except urllib2.HTTPError, e:
-        raise AutoSubmitException('Cannot get search results: %s' % e)
+        raise AutoSubmitException('Cannot get requests submitted to %s: %s' % (project, e))
 
     try:
         node = ET.parse(fin).getroot()
     except SyntaxError, e:
         fin.close()
-        raise AutoSubmitException('Cannot parse search results: %s' % e)
+        raise AutoSubmitException('Cannot parse requests submitted to %s: %s' % (project, e))
 
     fin.close()
 
     return node
 
 
+def fetch_requests_for_project(apiurl, project, package = None):
+    xpath = '(action/@type=\'submit\' or action/@type=\'delete\') and (state/@name=\'new\' or state/@name=\'review\') and (action/target/@project=\'%(project)s\' or submit/target/@project=\'%(project)s\')' % { 'project': project }
+
+    return fetch_requests(apiurl, xpath)
+
+
+def fetch_all_requests_for_package(apiurl, project, package):
+    xpath = 'action/@type=\'submit\' and (action/target/@project=\'%(project)s\' or submit/target/@project=\'%(project)s\') and (action/target/@package=\'%(package)s\' or submit/target/@package=\'%(package)s\')' % { 'project': project, 'package': package }
+
+    return fetch_requests(apiurl, xpath)
+
+
 #######################################################################
 
 
-def fetch_package_files_metadata(apiurl, project, package, revision):
-    query = None
+def fetch_package_files_metadata(apiurl, project, package, revision = None, expand = False):
+    query = {}
     if revision:
-        query = { 'rev': revision }
-    url = osc_copy.makeurl(apiurl, ['public', 'source', project, package], query=query)
+        query['rev'] = revision
+    if expand:
+        query['expand'] = '1'
+
+    url = core.makeurl(apiurl, ['public', 'source', project, package], query=query)
 
     try:
-        fin = http_GET(url)
+        fin = core.http_GET(url)
     except urllib2.HTTPError, e:
         raise AutoSubmitException('Cannot get files metadata of %s/%s: %s' % (project, package, e))
 
@@ -163,9 +198,35 @@ def fetch_package_files_metadata(apiurl, project, package, revision):
 #######################################################################
 
 
-def create_submit_request(apiurl, source_project, source_package, target_project, target_package):
-#TODO get rev!
-    return
+def fetch_package_info(apiurl, project, package, revision = None):
+    query = {'view': 'info'}
+    if revision:
+        query['rev'] = revision
+
+    url = core.makeurl(apiurl, ['public', 'source', project, package], query=query)
+
+    try:
+        fin = core.http_GET(url)
+    except urllib2.HTTPError, e:
+        raise AutoSubmitException('Cannot get info of %s/%s: %s' % (project, package, e))
+
+    try:
+        node = ET.parse(fin).getroot()
+    except SyntaxError, e:
+        fin.close()
+        raise AutoSubmitException('Cannot parse info of %s/%s: %s' % (project, package, e))
+
+    fin.close()
+
+    return node
+
+
+#######################################################################
+
+
+def create_submit_request(apiurl, source_project, source_package, rev, target_project, target_package):
+#TODO drop this
+    return 0
 
     request = ET.Element('request')
     request.set('type', 'submit')
@@ -185,15 +246,15 @@ def create_submit_request(apiurl, source_project, source_package, target_project
     state.set('name', 'new')
 
     description = ET.SubElement(request, 'description')
-    description.text = 'Automatically submitted by auto-submit script'
+    description.text = 'Automatic submission by obs-autosubmit'
 
     tree = ET.ElementTree(request)
     xml = ET.tostring(tree)
 
-    url = osc_copy.makeurl(apiurl, ['request'], query='cmd=create')
+    url = core.makeurl(apiurl, ['request'], query='cmd=create')
 
     try:
-        fin = http_POST(url, data=xml)
+        fin = core.http_POST(url, data=xml)
     except urllib2.HTTPError, e:
         raise AutoSubmitException('Cannot submit %s to %s: %s' % (source_project, source_package, target_project, target_package, e))
 
@@ -205,11 +266,25 @@ def create_submit_request(apiurl, source_project, source_package, target_project
 
     fin.close()
 
+    return node.get('id')
+
 
 #######################################################################
 
 
 class AutoSubmitPackage:
+    '''
+        Small note about the hashes:
+
+         - unexpanded_hash: hash of the unexpanded sources
+         - hash: this is, more or less, the hash of the expanded sources.
+           ("more or less" because this is verifymd5, which is apparently used
+           internally in OBS by the scheduler; it's not the hash we get by
+           default)
+
+        For all that matters, we're really interested in hash when comparing
+        packages to see if there's a diff, not unexpanded_hash.
+    '''
 
     def __init__(self, project, package, state_hash = '', unexpanded_state_hash = '', rev = '', changes_hash = ''):
         self.project = project
@@ -220,14 +295,45 @@ class AutoSubmitPackage:
         self.changes_hash = changes_hash
 
 
-    def set_state_from_files_metadata(self, directory_node):
-        linkinfo_node = directory_node.find('linkinfo')
-        if linkinfo_node is None:
-            # not a link
-            self.expanded_state_hash = linkinfo_node.get('srcmd5')
-        else:
-            # really a link; we'll only have the unexpanded state
-            self.unexpanded_state_hash = linkinfo_node.get('xsrcmd5')
+    def fetch_latest_package_state(self, apiurl, nochanges = False):
+        sourceinfo_node = fetch_package_info(apiurl, self.project, self.package)
+
+        rev = sourceinfo_node.get('rev')
+        unexpanded_state_hash = sourceinfo_node.get('srcmd5')
+        state_hash = sourceinfo_node.get('verifymd5') or unexpanded_state_hash
+
+        if not rev or not unexpanded_state_hash:
+            raise AutoSubmitException('Cannot fetch current state of %s' % (self,))
+
+        self.rev = rev
+        self.unexpanded_state_hash = unexpanded_state_hash
+
+        # State hash might be the same -- for instance, after "baserev update by copy to link target" commits from buildservice-autocommit
+        # In that case, we don't need to fetch the new hash of the .changes file
+        if state_hash == self.state_hash:
+            # We were up-to-date, that's cool
+            return
+
+        self.state_hash = state_hash
+
+        if nochanges:
+            return
+
+        # Update changes_hash
+        directory_node = fetch_package_files_metadata(apiurl, self.project, self.package, expand = True)
+
+        self.changes_md5 = None
+
+        for entry_node in directory_node.findall('entry'):
+            name = entry_node.get('name') or ''
+            md5 = entry_node.get('md5')
+
+            if name.endswith('.changes') and not md5:
+                raise AutoSubmitException('Cannot fetch hash of changes file for %s' % (self,))
+
+            if name == '%s.changes' % self.package:
+                self.changes_md5 = md5
+                break
 
 
     @classmethod
@@ -297,6 +403,88 @@ class AutoSubmitPackage:
 #######################################################################
 
 
+class AutoSubmitCache:
+    ''' The cache only contains packages with a difference as of now, with
+        each of them belonging to one category:
+          - the list of packages that we filtered (since they should stay
+            ignored).
+          - the list of packages that we successfully submitted (since they
+            should be ignored now).
+        We need to put the second category in there, else we'll rely on the
+        "look at new submit requests" filter, which requires some traffic.
+
+        See hash documentation in AutoSubmitPackage for why we use state_hash
+        and not unexpanded_state_hash
+    '''
+
+    def __init__(self, conf):
+        self.conf = conf
+        self._dbfile = os.path.join(self.conf.cache_dir, 'cache.db')
+
+        self.dbmeta = None
+        self.cursor = None
+
+        self._init_db()
+
+
+    def _init_db(self):
+        create = True
+        if os.path.exists(self._dbfile):
+            create = False
+            if not os.access(self._dbfile, os.W_OK):
+                raise AutoSubmitUnlikelyException('\'%s\' is read-only. Cache database must be writable.' % self._dbfile)
+        else:
+            dirname = os.path.dirname(self._dbfile)
+            if not os.path.exists(dirname):
+                os.makedirs(dirname)
+
+        self.dbmeta = sqlite3.connect(self._dbfile)
+        if not self.dbmeta:
+            raise AutoSubmitUnlikelyException('No access to cache database.' % self._dbfile)
+
+        self.dbmeta.row_factory = sqlite3.Row
+        self.cursor = self.dbmeta.cursor()
+
+        if create:
+            self.cursor.execute('''CREATE TABLE cache (date TEXT, parent_project TEXT, parent_package TEXT, devel_project TEXT, devel_package TEXT, devel_state_hash TEXT);''')
+
+
+    def get_from_cache(self, parent_project, parent_package):
+        self.cursor.execute('''SELECT * FROM cache WHERE parent_project = ? AND parent_package = ?;''', (parent_project, parent_package))
+        row = self.cursor.fetchone()
+        if row:
+            return (row['devel_project'], row['devel_package'], row['devel_state_hash'])
+        else:
+            return (None, None, None)
+
+
+    def add_to_cache(self, parent_project, parent_package, devel_project, devel_package, devel_state_hash):
+        # First remove old entries for this parent package
+        self.cursor.execute('''DELETE FROM cache WHERE parent_project = ? AND parent_package = ?;''', (parent_project, parent_package))
+
+        self.cursor.execute('''INSERT INTO cache VALUES (datetime('now'), ?, ?, ?, ?, ?);''', (parent_project, parent_package, devel_project, devel_package, devel_state_hash))
+
+
+    def prune_old_entries(self):
+        self.cursor.execute('''DELETE FROM cache WHERE datetime(date, '+7 days') < datetime('now');''')
+
+
+    def commit(self):
+        if self.dbmeta:
+            self.dbmeta.commit()
+
+
+    def __del__(self):
+        if self.cursor:
+            self.cursor.close()
+        if self.dbmeta:
+            self.dbmeta.commit()
+            self.dbmeta.close()
+
+
+#######################################################################
+
+
 class AutoSubmitWorker:
 
     def __init__(self, conf):
@@ -344,11 +532,14 @@ class AutoSubmitWorker:
                 print >>sys.stderr, 'Cannot get devel package for %s: %s' % (parent_package, e)
                 continue
 
+            # See hash documentation in AutoSubmitPackage for why we use
+            # state_hash and not unexpanded_state_hash
             if parent_package.state_hash == devel_package.state_hash:
                 continue
 
             if devel_package.project == self.conf.project:
-                print >>sys.stderr, "Devel package %s (for %s) belongs to target project %s but state hash is different: this should never happen." % (devel_package, parent_package, self.conf.project)
+                if str(parent_package) not in INTERNAL_LINK_DIFFERENT_HASH_SAFE:
+                    print >>sys.stderr, 'Devel package %s (for %s) belongs to target project %s but state hash is different: this should never happen.' % (devel_package, parent_package, self.conf.project)
                 continue
 
             hash_key = str(parent_package)
@@ -363,122 +554,116 @@ class AutoSubmitWorker:
         self._packages_with_diff.sort()
 
 
-    def _read_cache(self):
-        self._cache = {}
-#TODO
+    def _fetch_existing_requests(self):
+        xml_root = fetch_requests_for_project(self.conf.apiurl, self.conf.project)
 
-
-    def _write_cache(self):
-        ''' The cache only contains packages with a difference as of now, with
-            each of them belonging to one category:
-              - the list of packages that we filtered (since they should stay
-                ignored).
-              - the list of packages that we successfully submitted (since they
-                should be ignored now).
-            We need to put the second category in there, else we'll rely on the
-            "look at new submit requests" filter, which requires some traffic.
-        '''
-#TODO
-        for (devel_package, parent_package) in self._packages_filtered:
-            pass
-        for (devel_package, parent_package) in self._packages_submitted:
-            pass
-
-
-    def _fetch_package_state_at_rev(self, package):
-        ''' Gets the state hash of a package for a specific revision.
-
-            This is only needed when we don't already have a state hash, ie
-            when we got a package from a request.
-            
-            Note that, to avoid unneeded traffic, we get only the unexpanded
-            state hash if it's a link.
-        '''
-#TODO disabled for now
-        return
-
-        if not package.rev:
-            # we already fetched the state (or this should not have been called at all)
-            return
-
-        if package.state_hash or package.unexpanded_state_hash:
-            raise AutoSubmitException('Fetching state of %s while we already have the state.' % package)
-
-        xml_root = fetch_package_files_metadata(self.conf.apiurl, package.project, package.package, package.rev)
-        package.set_state_from_files_metadata(xml_root)
-
-        # Reset revision: we don't need it anymore
-        self.rev = ''
-
-
-    def _fetch_requests_since_last_run(self):
-        ''' If we run for the first time, we just get the list of open requests.
-            Those will be the base of what we know we can ignore for auto-submit.
-
-            If we already run before, then we get the list of all requests since
-            the last run (we kept the timestamp of the most recent request). Those
-            new requests let us know what we should not auto-submit (even if a
-            request was revoked or superseded -- since that means the source that
-            got revoked/superseded should not be pushed).
-
-            In all cases, we will only auto-submit if the current state of the
-            source is different from the state when the request was created.
-
-        '''
-#FIXME: admittedly, there's a race here: between the time where we get this
-# list, and the time where we use it to check if a package should be submitted,
-# new requests might have been created. Let's say it's good enough for now,
-# though.
-
-        if self._most_recent_request:
-            restrict_xpath = '(compare(state/@when,\'%s\') >= 0)' % self._most_recent_request
-        else:
-            restrict_xpath = 'state/@name=\'new\' or state/@name=\'review\''
-
-        xpath_base = '(action/@type=\'submit\' or action/@type=\'delete\') and (action/target/@project=\'%(project)s\' or submit/target/@project=\'%(project)s\')' % { 'project': self.conf.project }
-
-        xpath = '(%s) and (%s)' % (restrict_xpath, xpath_base)
-
-        xml_root = fetch_search_results(self.conf.apiurl, xpath)
-
-        self._delete_requests = {}
         self._submit_requests = {}
+        self._delete_requests = {}
 
         for request_node in xml_root.findall('request'):
-            state_node = request_node.find('state')
-            if state_node is not None:
-                state = state_node.get('name')
-                when = state_node.get('when')
-                if when > self._most_recent_request:
-                    self._most_recent_request = when
-            else:
-                raise AutoSubmitUnlikelyException('no state for request %s' % request_node.get('id'))
+            request_id = request_node.get('id')
+            if not request_id:
+                print >>sys.stderr, 'Ignoring request with no request id.'
+                continue
 
             for action_node in request_node.findall('action'):
+                action_type = action_node.get('type')
+                if not action_type:
+                    print >>sys.stderr, 'Ignoring request %s: no action type.' % request_id
+                    continue
+
+                if action_type not in ('submit', 'delete'):
+                    print >>sys.stderr, 'Ignoring request %s: action type \'%s\' not expected.' % (request_id, action_type)
+                    continue
+
                 source = None
                 target = None
 
                 source_node = action_node.find('source')
                 if source_node is not None:
                     source = AutoSubmitPackage.from_request_node(source_node)
-
                 target_node = action_node.find('target')
                 if target_node is not None:
                     target = AutoSubmitPackage.from_request_node(target_node)
 
-                if action_node.get('type') == 'delete':
-                    if state in ['new', 'review', 'accepted']:
-                        self._delete_requests[str(target)] = True
-                elif action_node.get('type') == 'submit':
-                    if self._submit_requests.has_key(str(target)):
-                        sources = self._submit_requests[str(target)]
+                if not target:
+                    print >>sys.stderr, 'Ignoring request %s: target mis-defined.' % request_id
+                    continue
+
+                key = str(target)
+
+                if action_type == 'submit':
+                    if not source:
+                        print >>sys.stderr, 'Ignoring submit request %s: source mis-defined.' % request_id
+                        continue
+
+                    new = (request_id, source)
+                    if not self._submit_requests.has_key(key):
+                        requests = [ new ]
                     else:
-                        sources = []
-                    sources.append(source)
-                    self._submit_requests[str(target)] = sources
+                        requests = self._submit_requests[key].append(new)
+                    self._submit_requests[key] = requests
+                elif action_type == 'delete':
+                    if not self._delete_requests.has_key(key):
+                        requests = [ request_id ]
+                    else:
+                        requests = self._delete_requests[key].append(key)
+                    self._delete_requests[key] = requests
 
 
-    def _filter_packages_to_submit(self):
+    def _devel_package_check_already_submitted(self, devel_package, parent_package):
+        xml_root = fetch_all_requests_for_package(self.conf.apiurl, parent_package.project, parent_package.package)
+
+        for request_node in xml_root.findall('request'):
+            request_id = request_node.get('id')
+            if not request_id:
+#                raise AutoSubmitUnlikelyException('No access to cache database.' % self._dbfile)
+                print >>sys.stderr, 'Ignoring request with no request id.'
+                continue
+
+            for action_node in request_node.findall('action'):
+                action_type = action_node.get('type')
+                if not action_type:
+                    print >>sys.stderr, 'Ignoring request %s: no action type.' % request_id
+                    continue
+
+                if action_type not in ('submit',):
+                    print >>sys.stderr, 'Ignoring request %s: action type \'%s\' not expected.' % (request_id, action_type)
+                    continue
+
+                source = None
+
+                source_node = action_node.find('source')
+                if source_node is not None:
+                    source = AutoSubmitPackage.from_request_node(source_node)
+
+                if not source:
+                    print >>sys.stderr, 'Ignoring request %s: source mis-defined.' % request_id
+                    continue
+
+                if devel_package == source and devel_package.rev == source.rev:
+                    return request_id
+
+        return None
+
+
+    def _auto_submit_enabled(self, package):
+        ''' Checks if auto-submit is disabled for this package.
+
+            By default, it's all enabled. But there might be some attribute in OBS
+            to disable this.
+
+            We first check if it's disabled for the project.
+        '''
+#TODO if there is an attribute, properly check for it, with some cache. Right now, we hardcode a blacklist...
+
+        if package.project in [ 'GNOME:Factory', 'GNOME:Apps' ]:
+            return False
+
+        return True
+
+
+    def _should_filter_package(self, devel_package, parent_package):
         ''' To know if we need to create a submit request, we check the
             following:
             a) Checks that do not require any network activity
@@ -488,102 +673,175 @@ class AutoSubmitWorker:
                3) the parent package has no deleterequest associated to it (we
                   have the list of requests already)
             b) Checks that do require network activity
-               1) there has been no submit request (even if revoked,
-                  superseded, etc.) with the same state in the devel package
-                  since our last run (we have the list of requests already, but
-                  we do not have the state of the sources of the requests)
-               2) auto-submit is enabled for the devel package (or for the
+               1) auto-submit is enabled for the devel package (or for the
                   whole devel project)
-               3) state of the devel package we got via the status API is still
-                  current; if no, go back to a) with up-to-date state
+               2) state of the devel package we got via the status API is still
+                  current; if no, go back to a) with up-to-date state.
+                  We also fetch the rev from devel package at this point.
+               3) there is an open submit request for this state in the devel
+                  package (we have the list of requests already, but we need
+                  data fetched in b.2.)
+               4) there was a submit request (even if revoked,
+                  superseded, etc.) with the same state in the devel package
+                  (we need to fetch old submit requests for this package)
+
+            Note: we cannot rely on state_hash here. There's no guarantee we'll
+            still have a valid expanded hash anymore -- this can heppen if we
+            re-enter this method after b.2.
         '''
-        self._packages_to_submit = []
+        # a.1. Was already seen/handled in the past; this cache is not completely useless! ;-)
+        (cached_devel_project, cached_devel_package, cached_devel_state_hash) = self._cache.get_from_cache(parent_package.project, parent_package.package)
+        # See hash documentation in AutoSubmitPackage for why we use state_hash
+        # and not unexpanded_state_hash
+        if cached_devel_project == devel_package.project and cached_devel_package == devel_package.package and cached_devel_state_hash == devel_package.state_hash:
+            self._verbose_print('Not submitting %s to %s: changes already seen in the past.' % (devel_package, parent_package))
+            return True
 
-        for (devel_package, parent_package) in self._packages_with_diff:
-            # a.1. Was already seen/handled in the past; this cache is not completely useless! ;-)
-            try:
-#TODO: we'll likely have a different structure in the cache, especially as we do not necessarily have the expanded state hash for submitted packages
-                (last_submitted_package, last_seen_state_hash) = self._cache[str(parent_package)]
-                if last_submitted_package == devel_package and (devel_package.state_hash in [last_submitted_package.state_hash, last_seen_state_hash]):
-                    self._verbose_print("Not submitting %s to %s: already seen in the past." % (devel_package, parent_package))
+        # a.2. The .changes files are the same, so not worth submitting.
+        # (Ignored if the status API doesn't have the attributes for .changes hash)
+        if parent_package.changes_hash and parent_package.changes_hash == devel_package.changes_hash:
+            self._verbose_print('Not submitting %s to %s: .changes files are the same.' % (devel_package, parent_package))
+            return True
+
+        # a.3. The parent package is, apparently, scheduled to be deleted. If the delete request is rejected, we'll submit on next run anyway.
+        if self._delete_requests.has_key(str(parent_package)):
+            self._verbose_print('Not submitting %s to %s: delete request for %s filed.' % (devel_package, parent_package, parent_package))
+            return True
+
+        # b.1. Auto-submit is enabled for the devel package (or for the whole devel project)
+        if not self._auto_submit_enabled(devel_package):
+            self._verbose_print('Not submitting %s to %s: auto-submit disabled.' % (devel_package, parent_package))
+            return True
+
+        # b.2. State of the devel package we got via the status API is still current
+        # This is also where we fetch rev, needed for the submit request. If we
+        # have a rev, that means we've called that already.
+        if not devel_package.rev:
+            old_hash = devel_package.state_hash
+            devel_package.fetch_latest_package_state(self.conf.apiurl)
+            # See hash documentation in AutoSubmitPackage for why we use
+            # state_hash and not unexpanded_state_hash
+            if old_hash != devel_package.state_hash:
+                # Devel package is more recent, let's check everything for the most recent version
+                return self._should_filter_package(devel_package, parent_package)
+
+        # b.3. There is already an open submit request; we need to see if this is for the current state of the source package.
+        if self._submit_requests.has_key(str(parent_package)):
+            old_sr = None
+            requests = self._submit_requests[str(parent_package)]
+            for (request_id, source) in requests:
+                if devel_package != source:
                     continue
-            except KeyError:
-                pass
 
-            # a.2. The .changes files are the same, so not worth submitting.
-            # (Ignored if the status API doesn't have the attributes for .changes hash)
-            if parent_package.changes_hash and parent_package.changes_hash == devel_package.changes_hash:
-                self._verbose_print("Not submitting %s to %s: .changes files are the same." % (devel_package, parent_package))
-                continue
+                if source.rev == devel_package.rev:
+                    old_sr = request_id
+                    break
 
-            # a.3. The parent package is, apparently, scheduled to be deleted. If the delete request is rejected, we'll submit on next run anyway.
-            if self._delete_requests.has_key(str(parent_package)):
-                self._verbose_print("Not submitting %s to %s: delete request for %s filed." % (devel_package, parent_package, parent_package))
-                continue
+            if old_sr is not None:
+                self._verbose_print('Not submitting %s to %s: already submitted (%s).' % (devel_package, parent_package, old_sr))
+                return True
+            else:
+                self._verbose_print('Should submit %s to %s with newer version.' % (devel_package, parent_package))
 
-            # b.1. There is already a submit request; we need to see if this is for the current state of the source package.
-            if self._submit_requests.has_key(str(parent_package)):
-                ignore = False
-                sources = self._submit_requests[str(parent_package)]
-                for source in sources:
-                    if devel_package != source:
-                        continue
+        # b.4. There was a submit request (even if revoked, superseded, etc.) with the same state in the devel package
+        old_sr = self._devel_package_check_already_submitted(devel_package, parent_package)
+        if old_sr is not None:
+            self._verbose_print('Not submitting %s to %s: already submitted in the past (%s).' % (devel_package, parent_package, old_sr))
+            return True
 
-                    self._fetch_package_state_at_rev(source)
+        if not parent_package.rev:
+            old_hash = parent_package.state_hash
+            parent_package.fetch_latest_package_state(self.conf.apiurl, nochanges = True)
+            # See hash documentation in AutoSubmitPackage for why we use
+            # state_hash and not unexpanded_state_hash
+            if parent_package.state_hash ==  devel_package.state_hash:
+                self._verbose_print('Not submitting %s to %s: status info out-of-date (parent package already the same).' % (devel_package, parent_package))
+                return True
 
-                    if (source.state_hash and source.state_hash == devel_package.state_hash):
-                        ignore = True
-                    if (source.unexpanded_state_hash and source.unexpanded_state_hash == devel_package.unexpanded_state_hash):
-                        ignore = True
-                    if ignore:
-                        break
-
-                if ignore:
-                    self._verbose_print("Not submitting %s to %s: already submitted." % (devel_package, parent_package))
-                    continue
-                else:
-                    self._verbose_print("Should submit %s to %s with newer version." % (devel_package, parent_package))
-
-#TODO b.2.
-#TODO b.3.
-
-            self._packages_to_submit.append((devel_package, parent_package))
-
-        self._packages_filtered = [ x for x in self._packages_to_submit if x not in self._packages_to_submit ]
+        return False
 
 
-    def _do_auto_submit(self):
-        self._packages_submitted = []
+    def _do_auto_submit(self, devel_package, parent_package):
+        if self.conf.debug:
+            self._verbose_print('Pretending to submit %s to %s (debug mode)' % (devel_package, parent_package))
+            return True
 
-        for (devel_package, parent_package) in self._packages_to_submit:
-            self._verbose_print("Submitting %s to %s" % (devel_package, parent_package), level = 2)
-            try:
-                print "DEBUG TO REMOVE: Submitting %s to %s" % (devel_package, parent_package)
-                create_submit_request(self.conf.apiurl, devel_package.project, devel_package.package, parent_package.project, parent_package.package)
-                self._packages_submitted.append((devel_package, parent_package))
-            except Exception, e:
-                print >>sys.stderr, 'Failed to submit %s to %s: %s' (devel_package, parent_package, e)
+        self._verbose_print('Submitting %s to %s' % (devel_package, parent_package))
+        try:
+            id = create_submit_request(self.conf.apiurl, devel_package.project, devel_package.package, devel_package.rev, parent_package.project, parent_package.package)
+            self._verbose_print('Submitted %s to %s: %s' % (devel_package, parent_package, id), level = 2)
+            return True
+        except Exception, e:
+            print >>sys.stderr, 'Failed to submit %s to %s: %s' (devel_package, parent_package, e)
+        return False
 
 
     def run(self):
-        self._most_recent_request = ''
+        self._cache = AutoSubmitCache(self.conf)
 
         self._fetch_packages_with_diff()
-        self._fetch_requests_since_last_run()
+        if self.conf.debug:
+            print '#####################################################'
+            print 'Packages with a diff (%d)' % len(self._packages_with_diff)
+            print '#####################################################'
+            for (devel_package, parent_package) in self._packages_with_diff:
+                print '%s -> %s' % (str(devel_package), str(parent_package))
+            print ''
 
-        self._read_cache()
-        self._filter_packages_to_submit()
-        self._do_auto_submit()
-        self._write_cache()
+        self._fetch_existing_requests()
+        if self.conf.debug:
+            print '#####################################################'
+            print 'Packages already with a submission (%d)' % len(self._submit_requests)
+            print '#####################################################'
+            for (key, value) in self._submit_requests.items():
+                output = [ 'from %s (%s)' % (str(source), request_id) for (request_id, source) in value ]
+                print 'Requests to %s: %s' % (key, ','.join(output))
+            print ''
 
+            print '#####################################################'
+            print 'Packages scheduled for deletion (%d)' % len(self._delete_requests)
+            print '#####################################################'
+            for (key, value) in self._delete_requests.items():
+                print 'Delete requests for %s: %s' % (key, ','.join(value))
+            print ''
 
-# Keep in status:
-# time of last sr seen with request_list (not the ones we generated); if empty, means there is no cache
-# project that the cache is being used for (so we can know the cache should be ignored if it's different)
+            print '#####################################################'
+            print 'Filtering and submitting'
+            print '#####################################################'
 
-#TODO after doing all submits, we should:
-# a) put in our cache the info for this submit (source, target, md5 of source)
-# b) put in our cache the info of other existing sr (so we don't auto-submit them later on -- that could happen if a sr was sent by somebody else, rejected and then found by the script again). Only put info about the last sr we know about (either seen, or autosubmitted) + md5 as seen in status (=> helps avoid the case where status doesn't get updated; we know we'll have handled it)
+        try:
+            for (devel_package, parent_package) in self._packages_with_diff:
+                update_cache = False
+
+                try:
+                    if self._should_filter_package(devel_package, parent_package):
+                        update_cache = True
+                        if self.conf.debug:
+                            print 'Filtered %s -> %s' % (str(devel_package), str(parent_package))
+                    else:
+                        if self.conf.debug:
+                            print 'Submitting %s -> %s' % (str(devel_package), str(parent_package))
+                        if self._do_auto_submit(devel_package, parent_package):
+                            update_cache = True
+                except Exception, e:
+                    print >>sys.stderr, 'Failed to deal with %s to %s: %s' % (devel_package, parent_package, e)
+
+                if update_cache:
+                    # See hash documentation in AutoSubmitPackage for why we
+                    # use state_hash and not unexpanded_state_hash
+                    self._cache.add_to_cache(parent_package.project, parent_package.package, devel_package.project, devel_package.package, devel_package.state_hash)
+
+        except Exception, e:
+            # We really, really, really want to commit the cache in all cases
+            self._cache.commit()
+            raise e
+        finally:
+            self._cache.commit()
+
+        self._cache.prune_old_entries()
+
+        del self._cache
+        self._cache = None
 
 
 #######################################################################
@@ -637,6 +895,8 @@ def main(args):
         path = os.path.realpath(options.log)
         safe_mkdir_p(os.path.dirname(path))
         sys.stderr = open(options.log, 'a')
+
+    oscconf.get_config(override_apiurl = conf.apiurl)
 
     try:
         os.makedirs(conf.cache_dir)
