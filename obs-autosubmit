@@ -225,9 +225,6 @@ def fetch_package_info(apiurl, project, package, revision = None):
 
 
 def create_submit_request(apiurl, source_project, source_package, rev, target_project, target_package):
-#TODO drop this
-    return 0
-
     request = ET.Element('request')
     request.set('type', 'submit')
 
