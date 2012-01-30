@@ -79,6 +79,16 @@ FILTER_REASON_ALREADY_SUBMITTED = 'already-submitted'
 FILTER_REASON_ALREADY_SUBMITTED_PAST = 'already-submitted-past'
 FILTER_REASON_OUT_OF_DATE_STATUS = 'out-of-date-status'
 
+FILTER_REASONS_TO_TEXT = {
+    FILTER_REASON_AUTOSUBMITTED: 'auto-submitted (%s)',
+    FILTER_REASON_SAME_CHANGES_FILE: '.changes files are the same',
+    FILTER_REASON_DELETE_REQUESTED: 'delete request for %s filed',
+    FILTER_REASON_AUTOSUBMIT_DISABLED: 'auto-submit disabled',
+    FILTER_REASON_ALREADY_SUBMITTED: 'already submitted (%s)',
+    FILTER_REASON_ALREADY_SUBMITTED_PAST: 'already submitted in the past (%s)',
+    FILTER_REASON_OUT_OF_DATE_STATUS: 'status info out-of-date (parent package already the same)'
+}
+
 
 #######################################################################
 
@@ -730,28 +740,39 @@ class AutoSubmitWorker:
             still have a valid expanded hash anymore -- this can heppen if we
             re-enter this method after b.2.
         '''
+        def _get_reason_text(reason, reason_data):
+            text = FILTER_REASONS_TO_TEXT[reason]
+            if '%s' in text:
+                return text % (reason_data or '',)
+            else:
+                return text
+
+        def _verbose_print_not_submitting(self, devel_package, parent_package, reason, reason_data):
+            reason_text = _get_reason_text(reason, reason_data)
+            self._verbose_print('Not submitting %s to %s: %s.' % (devel_package, parent_package, reason_text))
+
         # a.1. Was already seen/handled in the past; this cache is not completely useless! ;-)
         (cached_devel_project, cached_devel_package, cached_devel_state_hash, cached_reason, cached_reason_data) = self._cache.get_from_cache(parent_package.project, parent_package.package)
         # See hash documentation in AutoSubmitPackage for why we use state_hash
         # and not unexpanded_state_hash
         if cached_devel_project == devel_package.project and cached_devel_package == devel_package.package and cached_devel_state_hash == devel_package.state_hash:
-            self._verbose_print('Not submitting %s to %s: changes already seen in the past.' % (devel_package, parent_package))
+            self._verbose_print('Not submitting %s to %s: changes already seen in the past [%s].' % (devel_package, parent_package, _get_reason_text(cached_reason, cached_reason_data)))
             return (True, cached_reason, cached_reason_data)
 
         # a.2. The .changes files are the same, so not worth submitting.
         # (Ignored if the status API doesn't have the attributes for .changes hash)
         if parent_package.changes_hash and parent_package.changes_hash == devel_package.changes_hash:
-            self._verbose_print('Not submitting %s to %s: .changes files are the same.' % (devel_package, parent_package))
+            _verbose_print_not_submitting(self, devel_package, parent_package, FILTER_REASON_SAME_CHANGES_FILE, None)
             return (True, FILTER_REASON_SAME_CHANGES_FILE, None)
 
         # a.3. The parent package is, apparently, scheduled to be deleted. If the delete request is rejected, we'll submit on next run anyway.
         if self._delete_requests.has_key(str(parent_package)):
-            self._verbose_print('Not submitting %s to %s: delete request for %s filed.' % (devel_package, parent_package, parent_package))
+            _verbose_print_not_submitting(self, devel_package, parent_package, FILTER_REASON_DELETE_REQUESTED, str(parent_package))
             return (True, FILTER_REASON_DELETE_REQUESTED, str(parent_package))
 
         # b.1. Auto-submit is enabled for the devel package (or for the whole devel project)
         if not self._auto_submit_enabled(devel_package):
-            self._verbose_print('Not submitting %s to %s: auto-submit disabled.' % (devel_package, parent_package))
+            _verbose_print_not_submitting(self, devel_package, parent_package, FILTER_REASON_AUTOSUBMIT_DISABLED, None)
             return (True, FILTER_REASON_AUTOSUBMIT_DISABLED, None)
 
         # b.2. State of the devel package we got via the status API is still current
@@ -779,7 +800,7 @@ class AutoSubmitWorker:
                     break
 
             if old_sr is not None:
-                self._verbose_print('Not submitting %s to %s: already submitted (%s).' % (devel_package, parent_package, old_sr))
+                _verbose_print_not_submitting(self, devel_package, parent_package, FILTER_REASON_ALREADY_SUBMITTED, old_sr)
                 return (True, FILTER_REASON_ALREADY_SUBMITTED, old_sr)
             else:
                 self._verbose_print('Should submit %s to %s with newer version.' % (devel_package, parent_package))
@@ -787,7 +808,7 @@ class AutoSubmitWorker:
         # b.4. There was a submit request (even if revoked, superseded, etc.) with the same state in the devel package
         old_sr = self._devel_package_check_already_submitted(devel_package, parent_package)
         if old_sr is not None:
-            self._verbose_print('Not submitting %s to %s: already submitted in the past (%s).' % (devel_package, parent_package, old_sr))
+            _verbose_print_not_submitting(self, devel_package, parent_package, FILTER_REASON_ALREADY_SUBMITTED_PAST, old_sr)
             return (True, FILTER_REASON_ALREADY_SUBMITTED_PAST, old_sr)
 
         if not parent_package.rev:
@@ -796,7 +817,7 @@ class AutoSubmitWorker:
             # See hash documentation in AutoSubmitPackage for why we use
             # state_hash and not unexpanded_state_hash
             if parent_package.state_hash ==  devel_package.state_hash:
-                self._verbose_print('Not submitting %s to %s: status info out-of-date (parent package already the same).' % (devel_package, parent_package))
+                _verbose_print_not_submitting(self, devel_package, parent_package, FILTER_REASON_OUT_OF_DATE_STATUS, None)
                 return (True, FILTER_REASON_OUT_OF_DATE_STATUS, None)
 
         return (False, None, None)
