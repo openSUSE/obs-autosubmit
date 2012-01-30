@@ -902,22 +902,28 @@ def main(args):
             print >>sys.stderr, 'Cannot create cache directory: %s' % e
             return 1
 
-    if not lock_run(conf):
-        print >>sys.stderr, 'Another instance of the script is running.'
-        return 1
-
-    worker = AutoSubmitWorker(conf)
-
-    retval = 1
-
     try:
-        worker.run()
+        if not lock_run(conf):
+            print >>sys.stderr, 'Another instance of the script is running.'
+            return 1
+
+        worker = AutoSubmitWorker(conf)
+
+        retval = 1
+
+        try:
+            worker.run()
+            retval = 0
+        except Exception, e:
+            if isinstance(e, (AutoSubmitException,)):
+                print >>sys.stderr, e
+            else:
+                traceback.print_exc()
+
+    except KeyboardInterrupt:
+        # Handle this nicely as we want to remove the lock
+        print 'Interrupted...'
         retval = 0
-    except Exception, e:
-        if isinstance(e, (AutoSubmitException,)):
-            print >>sys.stderr, e
-        else:
-            traceback.print_exc()
 
     unlock_run(conf)
 
