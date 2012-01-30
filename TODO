@@ -1,0 +1,3 @@
+- Find a good way to tell whether a package (or all packages in a project)
+  should not be autosubmitted. See _auto_submit_enabled.
+  Current idea: use an attribute.

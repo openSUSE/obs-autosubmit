@@ -1,0 +1,43 @@
+obs-autosubmit
+==============
+
+obs-autosubmit is a tool to automatically submit changes in devel projects of
+an Open Build Service to the main project.
+
+While it has been designed (and tested) for the openSUSE:Factory project in the
+build.opensuse.org OBS server, it can work on any Open Build Service server,
+with any main project.
+
+
+Usage
+=====
+
+Just run obs-autosubmit! It will read ~/.oscrc to know the credentials to use
+for the OBS server.
+
+obs-autosubmit will output some files, including a cache (that is important) in
+the current directory, or in the directory specified with the --cache-dir
+option.
+
+The --apiurl and --project options can be used to specify which OBS server
+and main project to use.
+
+The --verbose option is useful in order to watch what obs-autosubmit is
+deciding,
+
+To protect against running this tool twice at the same time (which would be
+expensive in terms of interaction with the OBS server), obs-autosubmit has some
+(very basic) lock mechanism. In case obs-autosubmit is locked with no reason,
+just remove the file "running" from the cache directory.
+
+
+Dependencies
+============
+
+obs-autosubmit depends on python and osc.
+
+
+Contact
+=======
+
+Vincent Untz <vuntz@opensuse.org>
