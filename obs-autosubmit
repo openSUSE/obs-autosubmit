@@ -755,7 +755,8 @@ class AutoSubmitWorker:
         (cached_devel_project, cached_devel_package, cached_devel_state_hash, cached_reason, cached_reason_data) = self._cache.get_from_cache(parent_package.project, parent_package.package)
         # See hash documentation in AutoSubmitPackage for why we use state_hash
         # and not unexpanded_state_hash
-        if cached_devel_project == devel_package.project and cached_devel_package == devel_package.package and cached_devel_state_hash == devel_package.state_hash:
+        # We explicitly do not use the cache for the reasons that might not be valid anymore
+        if cached_devel_project == devel_package.project and cached_devel_package == devel_package.package and cached_devel_state_hash == devel_package.state_hash and cached_reason not in [FILTER_REASON_DELETE_REQUESTED, FILTER_REASON_AUTOSUBMIT_DISABLED]:
             self._verbose_print('Not submitting %s to %s: changes already seen in the past [%s].' % (devel_package, parent_package, _get_reason_text(cached_reason, cached_reason_data)))
             return (True, cached_reason, cached_reason_data)
 
