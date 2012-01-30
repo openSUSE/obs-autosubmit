@@ -71,6 +71,18 @@ INTERNAL_LINK_DIFFERENT_HASH_SAFE = [ 'openSUSE:Factory/glibc.i686' ]
 #######################################################################
 
 
+FILTER_REASON_AUTOSUBMITTED = 'autosubmitted'
+FILTER_REASON_SAME_CHANGES_FILE = 'same-changes-file'
+FILTER_REASON_DELETE_REQUESTED = 'delete-requested'
+FILTER_REASON_AUTOSUBMIT_DISABLED = 'autosubmit-disabled'
+FILTER_REASON_ALREADY_SUBMITTED = 'already-submitted'
+FILTER_REASON_ALREADY_SUBMITTED_PAST = 'already-submitted-past'
+FILTER_REASON_OUT_OF_DATE_STATUS = 'out-of-date-status'
+
+
+#######################################################################
+
+
 NO_DEVEL_PACKAGE_SAFE_REGEXP = [ re.compile(x) for x in NO_DEVEL_PACKAGE_SAFE ]
 
 
@@ -443,23 +455,23 @@ class AutoSubmitCache:
         self.cursor = self.dbmeta.cursor()
 
         if create:
-            self.cursor.execute('''CREATE TABLE cache (date TEXT, parent_project TEXT, parent_package TEXT, devel_project TEXT, devel_package TEXT, devel_state_hash TEXT);''')
+            self.cursor.execute('''CREATE TABLE cache (date TEXT, parent_project TEXT, parent_package TEXT, devel_project TEXT, devel_package TEXT, devel_state_hash TEXT, filter_reason TEXT, filter_reason_data TEXT);''')
 
 
     def get_from_cache(self, parent_project, parent_package):
         self.cursor.execute('''SELECT * FROM cache WHERE parent_project = ? AND parent_package = ?;''', (parent_project, parent_package))
         row = self.cursor.fetchone()
         if row:
-            return (row['devel_project'], row['devel_package'], row['devel_state_hash'])
+            return (row['devel_project'], row['devel_package'], row['devel_state_hash'], row['filter_reason'], row['filter_reason_data'])
         else:
-            return (None, None, None)
+            return (None, None, None, None, None)
 
 
-    def add_to_cache(self, parent_project, parent_package, devel_project, devel_package, devel_state_hash):
+    def add_to_cache(self, parent_project, parent_package, devel_project, devel_package, devel_state_hash, filter_reason, filter_reason_data):
         # First remove old entries for this parent package
         self.cursor.execute('''DELETE FROM cache WHERE parent_project = ? AND parent_package = ?;''', (parent_project, parent_package))
 
-        self.cursor.execute('''INSERT INTO cache VALUES (datetime('now'), ?, ?, ?, ?, ?);''', (parent_project, parent_package, devel_project, devel_package, devel_state_hash))
+        self.cursor.execute('''INSERT INTO cache VALUES (datetime('now'), ?, ?, ?, ?, ?, ?, ?);''', (parent_project, parent_package, devel_project, devel_package, devel_state_hash, filter_reason, filter_reason_data or ''))
 
 
     def prune_old_entries(self):
@@ -719,28 +731,28 @@ class AutoSubmitWorker:
             re-enter this method after b.2.
         '''
         # a.1. Was already seen/handled in the past; this cache is not completely useless! ;-)
-        (cached_devel_project, cached_devel_package, cached_devel_state_hash) = self._cache.get_from_cache(parent_package.project, parent_package.package)
+        (cached_devel_project, cached_devel_package, cached_devel_state_hash, cached_reason, cached_reason_data) = self._cache.get_from_cache(parent_package.project, parent_package.package)
         # See hash documentation in AutoSubmitPackage for why we use state_hash
         # and not unexpanded_state_hash
         if cached_devel_project == devel_package.project and cached_devel_package == devel_package.package and cached_devel_state_hash == devel_package.state_hash:
             self._verbose_print('Not submitting %s to %s: changes already seen in the past.' % (devel_package, parent_package))
-            return True
+            return (True, cached_reason, cached_reason_data)
 
         # a.2. The .changes files are the same, so not worth submitting.
         # (Ignored if the status API doesn't have the attributes for .changes hash)
         if parent_package.changes_hash and parent_package.changes_hash == devel_package.changes_hash:
             self._verbose_print('Not submitting %s to %s: .changes files are the same.' % (devel_package, parent_package))
-            return True
+            return (True, FILTER_REASON_SAME_CHANGES_FILE, None)
 
         # a.3. The parent package is, apparently, scheduled to be deleted. If the delete request is rejected, we'll submit on next run anyway.
         if self._delete_requests.has_key(str(parent_package)):
             self._verbose_print('Not submitting %s to %s: delete request for %s filed.' % (devel_package, parent_package, parent_package))
-            return True
+            return (True, FILTER_REASON_DELETE_REQUESTED, str(parent_package))
 
         # b.1. Auto-submit is enabled for the devel package (or for the whole devel project)
         if not self._auto_submit_enabled(devel_package):
             self._verbose_print('Not submitting %s to %s: auto-submit disabled.' % (devel_package, parent_package))
-            return True
+            return (True, FILTER_REASON_AUTOSUBMIT_DISABLED, None)
 
         # b.2. State of the devel package we got via the status API is still current
         # This is also where we fetch rev, needed for the submit request. If we
@@ -768,7 +780,7 @@ class AutoSubmitWorker:
 
             if old_sr is not None:
                 self._verbose_print('Not submitting %s to %s: already submitted (%s).' % (devel_package, parent_package, old_sr))
-                return True
+                return (True, FILTER_REASON_ALREADY_SUBMITTED, old_sr)
             else:
                 self._verbose_print('Should submit %s to %s with newer version.' % (devel_package, parent_package))
 
@@ -776,7 +788,7 @@ class AutoSubmitWorker:
         old_sr = self._devel_package_check_already_submitted(devel_package, parent_package)
         if old_sr is not None:
             self._verbose_print('Not submitting %s to %s: already submitted in the past (%s).' % (devel_package, parent_package, old_sr))
-            return True
+            return (True, FILTER_REASON_ALREADY_SUBMITTED_PAST, old_sr)
 
         if not parent_package.rev:
             old_hash = parent_package.state_hash
@@ -785,9 +797,9 @@ class AutoSubmitWorker:
             # state_hash and not unexpanded_state_hash
             if parent_package.state_hash ==  devel_package.state_hash:
                 self._verbose_print('Not submitting %s to %s: status info out-of-date (parent package already the same).' % (devel_package, parent_package))
-                return True
+                return (True, FILTER_REASON_OUT_OF_DATE_STATUS, None)
 
-        return False
+        return (False, None, None)
 
 
     def _do_auto_submit(self, devel_package, parent_package):
@@ -859,7 +871,8 @@ class AutoSubmitWorker:
                 update_cache = False
 
                 try:
-                    if self._should_filter_package(devel_package, parent_package):
+                    (should_filter, filter_reason, filter_reason_data) = self._should_filter_package(devel_package, parent_package)
+                    if should_filter:
                         update_cache = True
                         if self.conf.debug:
                             print 'Filtered %s -> %s' % (str(devel_package), str(parent_package))
@@ -868,6 +881,8 @@ class AutoSubmitWorker:
                             print 'Submitting %s -> %s' % (str(devel_package), str(parent_package))
                         sr_id = self._do_auto_submit(devel_package, parent_package)
                         if sr_id > 0:
+                            filter_reason = FILTER_REASON_AUTOSUBMITTED
+                            filter_reason_data = sr_id
                             update_cache = True
                 except Exception, e:
                     print >>sys.stderr, 'Failed to deal with %s to %s: %s' % (devel_package, parent_package, e)
@@ -875,7 +890,7 @@ class AutoSubmitWorker:
                 if update_cache:
                     # See hash documentation in AutoSubmitPackage for why we
                     # use state_hash and not unexpanded_state_hash
-                    self._cache.add_to_cache(parent_package.project, parent_package.package, devel_package.project, devel_package.package, devel_package.state_hash)
+                    self._cache.add_to_cache(parent_package.project, parent_package.package, devel_package.project, devel_package.package, devel_package.state_hash, filter_reason, filter_reason_data)
 
         except Exception, e:
             # We really, really, really want to commit the cache in all cases
