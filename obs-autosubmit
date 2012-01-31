@@ -312,9 +312,10 @@ class AutoSubmitPackage:
         self.unexpanded_state_hash = unexpanded_state_hash
         self.rev = rev
         self.changes_hash = changes_hash
+        self.max_mtime = 0
 
 
-    def fetch_latest_package_state(self, apiurl, nochanges = False):
+    def fetch_latest_package_state(self, apiurl, nodetails = False):
         sourceinfo_node = fetch_package_info(apiurl, self.project, self.package)
 
         rev = sourceinfo_node.get('rev')
@@ -328,14 +329,14 @@ class AutoSubmitPackage:
         self.unexpanded_state_hash = unexpanded_state_hash
 
         # State hash might be the same -- for instance, after "baserev update by copy to link target" commits from buildservice-autocommit
-        # In that case, we don't need to fetch the new hash of the .changes file
-        if state_hash == self.state_hash:
+        # In that case, we don't need to fetch the other details (unless we don't have max_mtime yet)
+        if state_hash == self.state_hash and self.max_mtime != 0:
             # We were up-to-date, that's cool
             return
 
         self.state_hash = state_hash
 
-        if nochanges:
+        if nodetails:
             return
 
         # Update changes_hash
@@ -346,13 +347,19 @@ class AutoSubmitPackage:
         for entry_node in directory_node.findall('entry'):
             name = entry_node.get('name') or ''
             md5 = entry_node.get('md5')
+            try:
+                mtime = int(entry_node.get('mtime') or '')
+            except ValueError:
+                # we don't raise an AutoSubmitException since it's not critical
+                mtime = 0
+
+            self.max_mtime = max(mtime, self.max_mtime)
 
             if name.endswith('.changes') and not md5:
                 raise AutoSubmitException('Cannot fetch hash of changes file for %s' % (self,))
 
             if name == '%s.changes' % self.package:
                 self.changes_md5 = md5
-                break
 
 
     @classmethod
@@ -814,7 +821,7 @@ class AutoSubmitWorker:
 
         if not parent_package.rev:
             old_hash = parent_package.state_hash
-            parent_package.fetch_latest_package_state(self.conf.apiurl, nochanges = True)
+            parent_package.fetch_latest_package_state(self.conf.apiurl, nodetails = True)
             # See hash documentation in AutoSubmitPackage for why we use
             # state_hash and not unexpanded_state_hash
             if parent_package.state_hash ==  devel_package.state_hash:
