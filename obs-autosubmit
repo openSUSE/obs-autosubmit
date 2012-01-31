@@ -283,6 +283,53 @@ def fetch_package_info(apiurl, project, package, revision = None):
 #######################################################################
 
 
+def fetch_attributes(apiurl, project, package = None):
+    if package:
+        url = core.makeurl(apiurl, ['source', project, package, '_attribute'])
+        err_str = '%s/%s' % (package, project)
+    else:
+        url = core.makeurl(apiurl, ['source', project, '_attribute'])
+        err_str = package
+
+    try:
+        fin = core.http_GET(url)
+    except urllib2.HTTPError, e:
+        raise AutoSubmitException('Cannot get attributes of %s: %s' % (err_str, e))
+
+    try:
+        attributes_node = ET.parse(fin).getroot()
+    except SyntaxError, e:
+        fin.close()
+        raise AutoSubmitException('Cannot parse attributes of %s: %s' % (err_str, e))
+
+    fin.close()
+
+    attributes = {}
+
+    for attribute_node in attributes_node.findall('attribute'):
+        namespace = attribute_node.get('namespace')
+        name = attribute_node.get('name')
+
+        if not namespace or not name:
+            print >>sys.stderr, 'Ignoring an attribute of %s with missing namespace or name.' % err_str
+            continue
+
+        value = []
+        for value_node in attribute_node.findall('value'):
+            value.append(value_node.text)
+        if not value:
+            value = ''
+        elif len(value) == 1:
+            value = value[0]
+
+        attributes['%s:%s' % (namespace, name)] = value
+
+    return attributes
+
+
+#######################################################################
+
+
 def create_submit_request(apiurl, source_project, source_package, rev, target_project, target_package):
     request = ET.Element('request')
     request.set('type', 'submit')
@@ -350,6 +397,7 @@ class AutoSubmitPackage:
         self.rev = rev
         self.changes_hash = changes_hash
         self.max_mtime = max_mtime
+        self.attributes = None
 
 
     def fetch_latest_package_state(self, apiurl, nodetails = False):
@@ -397,6 +445,14 @@ class AutoSubmitPackage:
 
             if name == '%s.changes' % self.package:
                 self.changes_md5 = md5
+
+
+    def fetch_attributes(self, apiurl):
+        if self.attributes is not None:
+            # already fetched
+            return
+
+        self.attributes = fetch_attributes(apiurl, self.project, self.package)
 
 
     @classmethod
@@ -625,6 +681,7 @@ class AutoSubmitWorker:
         self.conf = conf
         self._blacklisted_projects = []
         self._blacklisted_packages = []
+        self._projects_attributes = {}
 
 
     def _verbose_print(self, s, level = 1):
@@ -824,12 +881,31 @@ class AutoSubmitWorker:
 
             We first check if it's disabled for the project.
         '''
-#TODO if there is an attribute, properly check for it, with some cache. Right now, we hardcode a blacklist...
+        def is_disabled_via_attribute(attributes):
+            if not attributes.has_key('openSUSE:DisableAutoSubmit'):
+                return False
+            value = attributes['openSUSE:DisableAutoSubmit']
+            if type(value) == list:
+                # Can't handle that, really
+                return False
+            if type(value) != str:
+                print >>sys.stderr, 'Unexpected attribute type: %s' (type(value),)
+                return False
+            return value.lower() in [ 'true', '1' ]:
 
         if package.project in self._blacklisted_projects:
             return False
 
         if str(package) in self._blacklisted_packages:
+            return False
+
+        if not self._projects_attributes.has_key(parent.project):
+            self._projects_attributes[parent.project] = fetch_attributes(self.conf.apiurl, parent.project)
+        if is_disabled_via_attribute(self._projects_attributes[parent.project]):
+            return False
+
+        package.fetch_attributes(self.conf.apiurl)
+        if is_disabled_via_attribute(package.attributes):
             return False
 
         return True
