@@ -1,6 +1,7 @@
 - Find a good way to tell whether a package (or all packages in a project)
   should not be autosubmitted. See _auto_submit_enabled.
   Current idea: use an attribute.
+  Status: see wip/attributes branch.
 
 - Remove workaround for test run that did submits in
   _devel_package_check_already_submitted
