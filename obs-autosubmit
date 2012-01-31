@@ -484,7 +484,7 @@ class AutoSubmitCache:
         self.cursor = self.dbmeta.cursor()
 
         if create:
-            self.cursor.execute('''CREATE TABLE cache (date TEXT, parent_project TEXT, parent_package TEXT, devel_project TEXT, devel_package TEXT, devel_state_hash TEXT, filter_reason TEXT, filter_reason_data TEXT);''')
+            self.cursor.execute('''CREATE TABLE cache (run_id INTEGER, parent_project TEXT, parent_package TEXT, devel_project TEXT, devel_package TEXT, devel_state_hash TEXT, filter_reason TEXT, filter_reason_data TEXT);''')
             self.cursor.execute('''CREATE TABLE run (id INTEGER PRIMARY KEY ASC, date_start TEXT, date_end TEXT);''')
 
 
@@ -510,7 +510,8 @@ class AutoSubmitCache:
 
 
     def get_from_cache(self, parent_project, parent_package):
-        self.cursor.execute('''SELECT * FROM cache WHERE parent_project = ? AND parent_package = ?;''', (parent_project, parent_package))
+        # We return the latest cache entry for this parent package; we don't care about older entries
+        self.cursor.execute('''SELECT * FROM cache WHERE parent_project = ? AND parent_package = ? ORDER BY run_id DESC LIMIT 1;''', (parent_project, parent_package))
         row = self.cursor.fetchone()
         if row:
             return (row['devel_project'], row['devel_package'], row['devel_state_hash'], row['filter_reason'], row['filter_reason_data'])
@@ -519,15 +520,18 @@ class AutoSubmitCache:
 
 
     def add_to_cache(self, parent_project, parent_package, devel_project, devel_package, devel_state_hash, filter_reason, filter_reason_data):
-        # First remove old entries for this parent package
-        self.cursor.execute('''DELETE FROM cache WHERE parent_project = ? AND parent_package = ?;''', (parent_project, parent_package))
+        if self.run_id is None:
+            raise AutoSubmitUnlikelyException('Cannot add entry to cache database: not running!')
 
-        self.cursor.execute('''INSERT INTO cache VALUES (datetime('now'), ?, ?, ?, ?, ?, ?, ?);''', (parent_project, parent_package, devel_project, devel_package, devel_state_hash, filter_reason, filter_reason_data or ''))
+        self.cursor.execute('''INSERT INTO cache VALUES (?, ?, ?, ?, ?, ?, ?, ?);''', (self.run_id, parent_project, parent_package, devel_project, devel_package, devel_state_hash, filter_reason, filter_reason_data or ''))
 
 
     def prune_old_entries(self):
-        self.cursor.execute('''DELETE FROM cache WHERE datetime(date, '+7 days') < datetime('now');''')
-        self.cursor.execute('''DELETE FROM run WHERE datetime(date_end, '+7 days') < datetime('now');''')
+        self.cursor.execute('''SELECT id FROM run WHERE datetime(date_end, '+7 days') < datetime('now');''')
+        delete_ids = [ row['id'] for row in self.cursor.fetchall() ]
+        for delete_id in delete_ids:
+            self.cursor.execute('''DELETE FROM cache WHERE run_id = ?;''', delete_id)
+            self.cursor.execute('''DELETE FROM run WHERE id = ?;''', delete_id)
 
 
     def commit(self):
