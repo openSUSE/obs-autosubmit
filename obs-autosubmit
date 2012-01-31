@@ -780,9 +780,15 @@ class AutoSubmitWorker:
         for request_node in xml_root.findall('request'):
             request_id = request_node.get('id')
             if not request_id:
-#                raise AutoSubmitUnlikelyException('No access to cache database.' % self._dbfile)
                 print >>sys.stderr, 'Ignoring request with no request id.'
                 continue
+
+# FIXME: this is really only a workaround needed because of a test run where autosubmit was not disabled. Can be dropped after the first real run.
+            try:
+                if int(request_id) in range(102244,102266+1):
+                    continue
+            except ValueError:
+                pass
 
             for action_node in request_node.findall('action'):
                 action_type = action_node.get('type')
