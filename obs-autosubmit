@@ -97,6 +97,35 @@ FILTER_REASONS_TO_TEXT = {
     FILTER_REASON_OUT_OF_DATE_STATUS: 'status info out-of-date (parent package already the same)'
 }
 
+# Order in this dict will impact order in output of --stats
+FILTER_REASONS_TO_TEXT_STATS = {
+    FILTER_REASON_AUTOSUBMITTED: 'Packages automatically submitted',
+    FILTER_REASON_ALREADY_AUTOSUBMITTED: 'Packages previously automatically submitted',
+    FILTER_REASON_SAME_CHANGES_FILE: 'Packages with no difference in .changes',
+    FILTER_REASON_DELETE_REQUESTED: 'Packages with a delete request',
+    FILTER_REASON_AUTOSUBMIT_DISABLED: 'Packages with autosubmit disabled',
+    FILTER_REASON_TOO_RECENT: 'Packages too recent to be automatically submitted',
+    FILTER_REASON_ALREADY_SUBMITTED: 'Packages already submitted',
+    FILTER_REASON_ALREADY_SUBMITTED_PAST: 'Packages already submitted in the past but declined/superseded/etc.',
+    FILTER_REASON_OUT_OF_DATE_STATUS: 'Packages with no changes (out-of-date status)'
+}
+
+STATS_ORDER = [
+    FILTER_REASON_AUTOSUBMITTED,
+    FILTER_REASON_ALREADY_AUTOSUBMITTED,
+    FILTER_REASON_TOO_RECENT,
+    FILTER_REASON_SAME_CHANGES_FILE,
+    FILTER_REASON_ALREADY_SUBMITTED,
+    FILTER_REASON_ALREADY_SUBMITTED_PAST,
+    FILTER_REASON_DELETE_REQUESTED,
+    FILTER_REASON_AUTOSUBMIT_DISABLED,
+    FILTER_REASON_OUT_OF_DATE_STATUS
+]
+
+if len(FILTER_REASONS_TO_TEXT) != len(FILTER_REASONS_TO_TEXT_STATS) or len(FILTER_REASONS_TO_TEXT_STATS) != len(STATS_ORDER):
+    print >>sys.stderr, 'Internal error: some filter is missing in some places.'
+    sys.exit(1)
+
 
 #######################################################################
 
@@ -539,6 +568,29 @@ class AutoSubmitCache:
     def commit(self):
         if self.dbmeta:
             self.dbmeta.commit()
+
+
+    def get_last_run(self):
+        self.cursor.execute('''SELECT * FROM run ORDER BY id DESC LIMIT 1;''')
+        row = self.cursor.fetchone()
+        if row:
+            return (row['id'], row['date_start'], row['date_end'])
+        else:
+            return (None, None, None)
+
+
+    def count(self, run_id):
+        self.cursor.execute('''SELECT COUNT(*) FROM cache WHERE run_id = ?;''', (run_id,))
+        row = self.cursor.fetchone()
+        return int(row[0])
+
+
+    def count_by_reason(self, run_id):
+        self.cursor.execute('''SELECT filter_reason, COUNT(*) FROM cache WHERE run_id = ? GROUP BY filter_reason;''', (run_id,))
+        counts = {}
+        for row in self.cursor.fetchall():
+            counts[row[0]] = row[1]
+        return counts
 
 
     def __del__(self):
@@ -989,6 +1041,33 @@ class AutoSubmitWorker:
         self._cache = None
 
 
+    def stats(self):
+        self._cache = AutoSubmitCache(self.conf)
+
+        (run_id, date_start, date_end) = self._cache.get_last_run()
+        if run_id is None:
+            print >>sys.stderr, 'No run in cache database.'
+            return
+        incomplete_run = (date_end == '0')
+
+        processed = self._cache.count(run_id)
+        filtered_stats = self._cache.count_by_reason(run_id)
+
+        print 'Successfully processed %s packages with changes in run from %s' % (processed, date_start)
+        if incomplete_run:
+            print 'NOTE: that run was not fully completed.'
+        print ''
+
+        for reason in STATS_ORDER:
+            if filtered_stats.has_key(reason):
+                print '%s: %s' % (FILTER_REASONS_TO_TEXT_STATS[reason], filtered_stats[reason])
+            else:
+                print '%s: %d' % (FILTER_REASONS_TO_TEXT_STATS[reason], 0)
+
+        del self._cache
+        self._cache = None
+
+
 #######################################################################
 
 
@@ -1017,6 +1096,9 @@ def unlock_run(conf):
 def main(args):
     parser = optparse.OptionParser()
 
+    parser.add_option('--stats', action='store_true',
+                      default=False, dest='stats',
+                      help='output statistics about the last run instead and quit')
     parser.add_option('--cache-dir', dest='cache_dir',
                       help='cache directory (default: current directory)')
     parser.add_option('--apiurl', '-A', dest='apiurl', default='https://api.opensuse.org/',
@@ -1060,7 +1142,10 @@ def main(args):
         retval = 1
 
         try:
-            worker.run()
+            if options.stats:
+                worker.stats()
+            else:
+                worker.run()
             retval = 0
         except Exception, e:
             if isinstance(e, (AutoSubmitException,)):
