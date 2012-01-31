@@ -76,6 +76,7 @@ INTERNAL_LINK_DIFFERENT_HASH_SAFE = [ 'openSUSE:Factory/glibc.i686' ]
 
 
 FILTER_REASON_AUTOSUBMITTED = 'autosubmitted'
+FILTER_REASON_ALREADY_AUTOSUBMITTED = 'already-autosubmitted'
 FILTER_REASON_SAME_CHANGES_FILE = 'same-changes-file'
 FILTER_REASON_DELETE_REQUESTED = 'delete-requested'
 FILTER_REASON_AUTOSUBMIT_DISABLED = 'autosubmit-disabled'
@@ -86,6 +87,7 @@ FILTER_REASON_OUT_OF_DATE_STATUS = 'out-of-date-status'
 
 FILTER_REASONS_TO_TEXT = {
     FILTER_REASON_AUTOSUBMITTED: 'auto-submitted (%s)',
+    FILTER_REASON_ALREADY_AUTOSUBMITTED: 'already auto-submitted (%s)',
     FILTER_REASON_SAME_CHANGES_FILE: '.changes files are the same',
     FILTER_REASON_DELETE_REQUESTED: 'delete request for %s filed',
     FILTER_REASON_AUTOSUBMIT_DISABLED: 'auto-submit disabled',
@@ -806,6 +808,8 @@ class AutoSubmitWorker:
         # We explicitly do not use the cache for the reasons that might not be valid anymore
         if cached_devel_project == devel_package.project and cached_devel_package == devel_package.package and cached_devel_state_hash == devel_package.state_hash and cached_reason not in [FILTER_REASON_DELETE_REQUESTED, FILTER_REASON_AUTOSUBMIT_DISABLED, FILTER_REASON_TOO_RECENT]:
             self._verbose_print('Not submitting %s to %s: changes already seen in the past [%s].' % (devel_package, parent_package, _get_reason_text(cached_reason, cached_reason_data)))
+            if cached_reason == FILTER_REASON_AUTOSUBMITTED:
+                cached_reason = FILTER_REASON_ALREADY_AUTOSUBMITTED
             return (True, cached_reason, cached_reason_data)
 
         # a.2. The .changes files are the same, so not worth submitting.
