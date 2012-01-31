@@ -579,8 +579,8 @@ class AutoSubmitCache:
             self.dbmeta.commit()
 
 
-    def get_last_run(self):
-        self.cursor.execute('''SELECT * FROM run ORDER BY id DESC LIMIT 1;''')
+    def get_run(self, nth_run_from_last = 0):
+        self.cursor.execute('''SELECT * FROM run ORDER BY id DESC LIMIT 1 OFFSET ?;''', (nth_run_from_last,))
         row = self.cursor.fetchone()
         if row:
             return (row['id'], row['date_start'], row['date_end'])
@@ -1058,12 +1058,15 @@ class AutoSubmitWorker:
         self._cache = None
 
 
-    def stats(self):
+    def stats(self, nth_run_from_last):
         self._cache = AutoSubmitCache(self.conf)
 
-        (run_id, date_start, date_end) = self._cache.get_last_run()
+        (run_id, date_start, date_end) = self._cache.get_run(nth_run_from_last = nth_run_from_last)
         if run_id is None:
-            print >>sys.stderr, 'No run in cache database.'
+            if nth_run_from_last == 0:
+                print >>sys.stderr, 'No run in cache database.'
+            else:
+                print >>sys.stderr, 'No such run in cache database.'
             return
         incomplete_run = (date_end == '0')
 
@@ -1119,6 +1122,9 @@ def main(args):
     parser.add_option('--stats', action='store_true',
                       default=False, dest='stats',
                       help='output statistics about the last run instead and quit')
+    parser.add_option('--nth-run', type='int',
+                      default=0, dest='nth_run',
+                      help='compute statistics for run NTH_RUN (counting from last) instead of last run')
     parser.add_option('--cache-dir', dest='cache_dir',
                       help='cache directory (default: current directory)')
     parser.add_option('--apiurl', '-A', dest='apiurl', default='https://api.opensuse.org/',
@@ -1135,6 +1141,14 @@ def main(args):
                       help='add debug output and do not create real submit requests (default: false)')
 
     (options, args) = parser.parse_args()
+
+    if options.nth_run != 0 and not options.stats:
+        print >>sys.stderr, '--nth-run can only be used with --stats.'
+        return 1
+
+    if options.nth_run < 0:
+        print >>sys.stderr, 'Value passed to --nth-run must be a positive integer.'
+        return 1
 
     conf = AutoSubmitConfig(options)
 
@@ -1163,7 +1177,7 @@ def main(args):
 
         try:
             if options.stats:
-                worker.stats()
+                worker.stats(options.nth_run)
             else:
                 worker.run()
             retval = 0
