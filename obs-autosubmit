@@ -975,6 +975,7 @@ class AutoSubmitWorker:
 
         self._cache.end_run()
         self._cache.prune_old_entries()
+        self._cache.commit()
 
         del self._cache
         self._cache = None
