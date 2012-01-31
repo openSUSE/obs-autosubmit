@@ -311,14 +311,14 @@ class AutoSubmitPackage:
         packages to see if there's a diff, not unexpanded_hash.
     '''
 
-    def __init__(self, project, package, state_hash = '', unexpanded_state_hash = '', rev = '', changes_hash = ''):
+    def __init__(self, project, package, state_hash = '', unexpanded_state_hash = '', rev = '', changes_hash = '', max_mtime = 0):
         self.project = project
         self.package = package
         self.state_hash = state_hash
         self.unexpanded_state_hash = unexpanded_state_hash
         self.rev = rev
         self.changes_hash = changes_hash
-        self.max_mtime = 0
+        self.max_mtime = max_mtime
 
 
     def fetch_latest_package_state(self, apiurl, nodetails = False):
@@ -375,11 +375,16 @@ class AutoSubmitPackage:
         unexpanded_md5 = node.get('srcmd5')
         expanded_md5 = node.get('verifymd5') or unexpanded_md5
         changes_md5 = node.get('changesmd5')
+        try:
+            max_mtime = int(node.get('maxmtime') or '')
+        except ValueError:
+            # we don't raise an AutoSubmitException since it's not critical
+            max_mtime = 0
 
         if not expanded_md5:
             raise AutoSubmitUnlikelyException('no state hash for %s/%s (?)' % (project, package))
 
-        return AutoSubmitPackage(project, package, state_hash = expanded_md5, unexpanded_state_hash = unexpanded_md5, changes_hash = changes_md5)
+        return AutoSubmitPackage(project, package, state_hash = expanded_md5, unexpanded_state_hash = unexpanded_md5, changes_hash = changes_md5, max_mtime = max_mtime)
 
 
     @classmethod
