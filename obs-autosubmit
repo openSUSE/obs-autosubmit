@@ -460,6 +460,7 @@ class AutoSubmitCache:
 
         self.dbmeta = None
         self.cursor = None
+        self.run_id = None
 
         self._init_db()
 
@@ -484,6 +485,28 @@ class AutoSubmitCache:
 
         if create:
             self.cursor.execute('''CREATE TABLE cache (date TEXT, parent_project TEXT, parent_package TEXT, devel_project TEXT, devel_package TEXT, devel_state_hash TEXT, filter_reason TEXT, filter_reason_data TEXT);''')
+            self.cursor.execute('''CREATE TABLE run (id INTEGER PRIMARY KEY ASC, date_start TEXT, date_end TEXT);''')
+
+
+    def start_run(self):
+        if self.run_id != None:
+            raise AutoSubmitUnlikelyException('Cannot add a new run to cache database: already running!')
+
+        self.cursor.execute('''INSERT INTO run VALUES (NULL, datetime('now'), 0);''')
+        self.cursor.execute('''SELECT MAX(id) FROM run;''')
+        row = self.cursor.fetchone()
+        if not row:
+            raise AutoSubmitUnlikelyException('Cannot fetch id of new run in cache database.')
+
+        self.run_id = row[0]
+
+
+    def end_run(self):
+        if self.run_id is None:
+            raise AutoSubmitUnlikelyException('Cannot end run in cache database: not running!')
+
+        self.cursor.execute('''UPDATE run SET date_end = datetime('now') WHERE id = ?;''', (self.run_id,))
+        self.run_id = None
 
 
     def get_from_cache(self, parent_project, parent_package):
@@ -504,6 +527,7 @@ class AutoSubmitCache:
 
     def prune_old_entries(self):
         self.cursor.execute('''DELETE FROM cache WHERE datetime(date, '+7 days') < datetime('now');''')
+        self.cursor.execute('''DELETE FROM run WHERE datetime(date_end, '+7 days') < datetime('now');''')
 
 
     def commit(self):
@@ -914,6 +938,8 @@ class AutoSubmitWorker:
             print 'Filtering and submitting'
             print '#####################################################'
 
+        self._cache.start_run()
+
         try:
             for (devel_package, parent_package) in self._packages_with_diff:
                 update_cache = False
@@ -947,6 +973,7 @@ class AutoSubmitWorker:
         finally:
             self._cache.commit()
 
+        self._cache.end_run()
         self._cache.prune_old_entries()
 
         del self._cache
