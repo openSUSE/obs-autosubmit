@@ -695,6 +695,9 @@ class AutoSubmitWorker:
         self._blacklisted_packages = []
 
         blacklist_file = os.path.join(os.path.dirname(__file__), 'blacklist')
+        if not os.path.exists(blacklist_file):
+            return
+
         fd = open(blacklist_file, 'r')
         lines = fd.readlines()
         fd.close()
