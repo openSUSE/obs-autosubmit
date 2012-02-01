@@ -97,19 +97,19 @@ FILTER_REASONS_TO_TEXT = {
     FILTER_REASON_OUT_OF_DATE_STATUS: 'status info out-of-date (parent package already the same)'
 }
 
-# Order in this dict will impact order in output of --stats
 FILTER_REASONS_TO_TEXT_STATS = {
     FILTER_REASON_AUTOSUBMITTED: 'Packages automatically submitted',
     FILTER_REASON_ALREADY_AUTOSUBMITTED: 'Packages previously automatically submitted',
     FILTER_REASON_SAME_CHANGES_FILE: 'Packages with no difference in .changes',
     FILTER_REASON_DELETE_REQUESTED: 'Packages with a delete request',
     FILTER_REASON_AUTOSUBMIT_DISABLED: 'Packages with autosubmit disabled',
-    FILTER_REASON_TOO_RECENT: 'Packages too recent to be automatically submitted',
+    FILTER_REASON_TOO_RECENT: 'Packages with too recent changes',
     FILTER_REASON_ALREADY_SUBMITTED: 'Packages already submitted',
     FILTER_REASON_ALREADY_SUBMITTED_PAST: 'Packages already submitted in the past but declined/superseded/etc.',
     FILTER_REASON_OUT_OF_DATE_STATUS: 'Packages with no changes (out-of-date status)'
 }
 
+# Order that will impact output of --stats
 STATS_ORDER = [
     FILTER_REASON_AUTOSUBMITTED,
     FILTER_REASON_ALREADY_AUTOSUBMITTED,
