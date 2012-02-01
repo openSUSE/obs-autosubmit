@@ -931,17 +931,17 @@ class AutoSubmitWorker:
                2) state of the devel package we got via the status API is still
                   current; if no, go back to a) with up-to-date state.
                   We also fetch the rev from devel package at this point.
-               3) the last change in the package (mtime of files) is not too
-                  recent (we need data fetched in b.2.)
-               4) there is an open submit request for this state in the devel
+               3) there is an open submit request for this state in the devel
                   package (we have the list of requests already, but we need
                   data fetched in b.2.)
-               5) there was a submit request (even if revoked,
+               4) there was a submit request (even if revoked,
                   superseded, etc.) with the same state in the devel package
                   (we need to fetch old submit requests for this package)
+               5) the last change in the package (mtime of files) is not too
+                  recent (we need data fetched in b.2.)
 
             Note: we cannot rely on state_hash here. There's no guarantee we'll
-            still have a valid expanded hash anymore -- this can heppen if we
+            still have a valid expanded hash anymore -- this can happen if we
             re-enter this method after b.2.
         '''
         def _get_reason_text(reason, reason_data):
@@ -994,13 +994,7 @@ class AutoSubmitWorker:
                 # Devel package is more recent, let's check everything for the most recent version
                 return self._should_filter_package(devel_package, parent_package)
 
-        # b.3. The last change in the package is not too recent
-        timedelta = datetime.timedelta(seconds = int(time.time()) - devel_package.max_mtime)
-        if timedelta.days < MIN_AGE_DAYS:
-            _verbose_print_not_submitting(self, devel_package, parent_package, FILTER_REASON_TOO_RECENT, str(timedelta.days))
-            return (True, FILTER_REASON_TOO_RECENT, str(timedelta.days))
-
-        # b.4. There is already an open submit request; we need to see if this is for the current state of the source package.
+        # b.3. There is already an open submit request; we need to see if this is for the current state of the source package.
         if self._submit_requests.has_key(str(parent_package)):
             old_sr = None
             requests = self._submit_requests[str(parent_package)]
@@ -1018,7 +1012,7 @@ class AutoSubmitWorker:
             else:
                 self._verbose_print('Should submit %s to %s with newer version.' % (devel_package, parent_package))
 
-        # b.5. There was a submit request (even if revoked, superseded, etc.) with the same state in the devel package
+        # b.4. There was a submit request (even if revoked, superseded, etc.) with the same state in the devel package
         old_sr = self._devel_package_check_already_submitted(devel_package, parent_package)
         if old_sr is not None:
             _verbose_print_not_submitting(self, devel_package, parent_package, FILTER_REASON_ALREADY_SUBMITTED_PAST, old_sr)
@@ -1032,6 +1026,12 @@ class AutoSubmitWorker:
             if parent_package.state_hash ==  devel_package.state_hash:
                 _verbose_print_not_submitting(self, devel_package, parent_package, FILTER_REASON_OUT_OF_DATE_STATUS, None)
                 return (True, FILTER_REASON_OUT_OF_DATE_STATUS, None)
+
+        # b.5. The last change in the package is not too recent
+        timedelta = datetime.timedelta(seconds = int(time.time()) - devel_package.max_mtime)
+        if timedelta.days < MIN_AGE_DAYS:
+            _verbose_print_not_submitting(self, devel_package, parent_package, FILTER_REASON_TOO_RECENT, str(timedelta.days))
+            return (True, FILTER_REASON_TOO_RECENT, str(timedelta.days))
 
         return (False, None, None)
 
