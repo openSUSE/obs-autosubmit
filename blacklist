@@ -1,6 +1,3 @@
-# Requested by vuntz
-GNOME:Factory
-GNOME:Apps
 # Requested by Richard Guenther
 # http://lists.opensuse.org/opensuse-packaging/2012-01/msg00193.html
 devel:gcc
@@ -145,5 +142,3 @@ X11:xfce
 # Requested by Claudio Freire
 # http://lists.opensuse.org/opensuse-packaging/2012-01/msg00219.html
 devel:languages:python/python-ipaddr
-# Requested by Andreas Jaeger
-Base:System/glibc
