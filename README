@@ -31,6 +31,17 @@ expensive in terms of interaction with the OBS server), obs-autosubmit has some
 just remove the file "running" from the cache directory.
 
 
+Disabling autosubmit behavior for a project or a package
+========================================================
+
+It's possible to disable the autosubmit behavior for a project or a package via
+the openSUSE:DisableAutoSubmit attribute, if it set to true or 1.
+
+This can be achieved with osc:
+
+ osc meta attribute PROJECT [PACKAGE] --attribute openSUSE:DisableAutoSubmit --set true
+
+
 Dependencies
 ============
 
