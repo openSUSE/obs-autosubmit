@@ -139,6 +139,3 @@ system:install:head/instlux
 # Requested by Guido Berhoerster
 # http://lists.opensuse.org/opensuse-packaging/2012-01/msg00216.html
 X11:xfce
-# Requested by Claudio Freire
-# http://lists.opensuse.org/opensuse-packaging/2012-01/msg00219.html
-devel:languages:python/python-ipaddr
