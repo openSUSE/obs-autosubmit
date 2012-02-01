@@ -902,10 +902,12 @@ class AutoSubmitWorker:
         if not self._projects_attributes.has_key(package.project):
             self._projects_attributes[package.project] = fetch_attributes(self.conf.apiurl, package.project)
         if is_disabled_via_attribute(self._projects_attributes[package.project]):
+            self._verbose_print('Auto-submit for %s disabled by project attribute.' % package, level = 2)
             return False
 
         package.fetch_attributes(self.conf.apiurl)
         if is_disabled_via_attribute(package.attributes):
+            self._verbose_print('Auto-submit for %s disabled by package attribute.' % package, level = 2)
             return False
 
         return True
