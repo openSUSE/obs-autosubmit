@@ -894,7 +894,7 @@ class AutoSubmitWorker:
             if type(value) != str:
                 print >>sys.stderr, 'Unexpected attribute type: %s' (type(value),)
                 return False
-            return value.lower() in [ 'true', '1' ]
+            return value.lower() in [ 'true', 'on', '1' ]
 
         if package.project in self._blacklisted_projects:
             return False
