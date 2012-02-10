@@ -625,9 +625,9 @@ class AutoSubmitCache:
         self.cursor.execute('''SELECT id FROM run WHERE datetime(date_end, '+7 days') < datetime('now');''')
         delete_ids = [ row['id'] for row in self.cursor.fetchall() ]
         for delete_id in delete_ids:
-            self.cursor.execute('''DELETE FROM filtered WHERE run_id = ?;''', delete_id)
-            self.cursor.execute('''DELETE FROM failed WHERE run_id = ?;''', delete_id)
-            self.cursor.execute('''DELETE FROM run WHERE id = ?;''', delete_id)
+            self.cursor.execute('''DELETE FROM filtered WHERE run_id = ?;''', (delete_id,))
+            self.cursor.execute('''DELETE FROM failed WHERE run_id = ?;''', (delete_id,))
+            self.cursor.execute('''DELETE FROM run WHERE id = ?;''', (delete_id,))
 
 
     def commit(self):
