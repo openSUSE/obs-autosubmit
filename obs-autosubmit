@@ -351,8 +351,7 @@ def create_submit_request(apiurl, source_project, source_package, rev, target_pr
     description = ET.SubElement(request, 'description')
     description.text = 'Automatic submission by obs-autosubmit'
 
-    tree = ET.ElementTree(request)
-    xml = ET.tostring(tree)
+    xml = ET.tostring(request)
 
     url = core.makeurl(apiurl, ['request'], query='cmd=create')
 
@@ -1047,7 +1046,7 @@ class AutoSubmitWorker:
             self._verbose_print('Submitted %s to %s: %s' % (devel_package, parent_package, id), level = 2)
             return id
         except Exception, e:
-            print >>sys.stderr, 'Failed to submit %s to %s: %s' (devel_package, parent_package, e)
+            print >>sys.stderr, 'Failed to submit %s to %s: %s' % (devel_package, parent_package, e)
         return 0
 
 
