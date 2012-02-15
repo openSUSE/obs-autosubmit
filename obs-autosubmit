@@ -1122,7 +1122,8 @@ class AutoSubmitWorker:
                             filter_reason_data = sr_id
                             update_cache = True
                 except AutoSubmitException, e:
-                    print >>sys.stderr, 'Failed to deal with %s to %s: %s' % (devel_package, parent_package, e)
+                    # Put a small prefix to clearly show that this is harmless
+                    print >>sys.stderr, '[note] %s (=> skipping %s to %s)' % (e, devel_package, parent_package)
 
                 if update_cache:
                     # See hash documentation in AutoSubmitPackage for why we
