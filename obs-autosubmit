@@ -241,6 +241,8 @@ def fetch_package_files_metadata(apiurl, project, package, revision = None, expa
     try:
         fin = core.http_GET(url)
     except urllib2.HTTPError, e:
+        if e.code == 400:
+            raise AutoSubmitException('Broken package %s/%s: %s' % (project, package, e.msg))
         raise AutoSubmitException('Cannot get files metadata of %s/%s: %s' % (project, package, e))
 
     try:
