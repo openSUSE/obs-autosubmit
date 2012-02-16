@@ -84,6 +84,7 @@ FILTER_REASON_ALREADY_SUBMITTED = 'already-submitted'
 FILTER_REASON_TOO_RECENT = 'too-recent'
 FILTER_REASON_ALREADY_SUBMITTED_PAST = 'already-submitted-past'
 FILTER_REASON_OUT_OF_DATE_STATUS = 'out-of-date-status'
+FILTER_REASON_ALREADY_SUBMITTED_LEGAL_REVIEW = 'already-submitted-legal-review'
 
 FILTER_REASONS_TO_TEXT = {
     FILTER_REASON_AUTOSUBMITTED: 'auto-submitted (%s)',
@@ -94,7 +95,8 @@ FILTER_REASONS_TO_TEXT = {
     FILTER_REASON_TOO_RECENT: 'last changes is too recent (~%s days old)',
     FILTER_REASON_ALREADY_SUBMITTED: 'already submitted (%s)',
     FILTER_REASON_ALREADY_SUBMITTED_PAST: 'already submitted in the past (%s)',
-    FILTER_REASON_OUT_OF_DATE_STATUS: 'status info out-of-date (parent package already the same)'
+    FILTER_REASON_OUT_OF_DATE_STATUS: 'status info out-of-date (parent package already the same)',
+    FILTER_REASON_ALREADY_SUBMITTED_LEGAL_REVIEW: 'different revision submitted, but had a manual legal review (%s)'
 }
 
 FILTER_REASONS_TO_TEXT_STATS = {
@@ -106,7 +108,8 @@ FILTER_REASONS_TO_TEXT_STATS = {
     FILTER_REASON_TOO_RECENT: 'Packages with too recent changes',
     FILTER_REASON_ALREADY_SUBMITTED: 'Packages already submitted',
     FILTER_REASON_ALREADY_SUBMITTED_PAST: 'Packages already submitted in the past but declined/superseded/etc.',
-    FILTER_REASON_OUT_OF_DATE_STATUS: 'Packages with no changes (out-of-date status)'
+    FILTER_REASON_OUT_OF_DATE_STATUS: 'Packages with no changes (out-of-date status)',
+    FILTER_REASON_ALREADY_SUBMITTED_LEGAL_REVIEW: 'Packages with old revision already submitted, with legal review'
 }
 
 # Order that will impact output of --stats
@@ -117,6 +120,7 @@ STATS_ORDER = [
     FILTER_REASON_SAME_CHANGES_FILE,
     FILTER_REASON_ALREADY_SUBMITTED,
     FILTER_REASON_ALREADY_SUBMITTED_PAST,
+    FILTER_REASON_ALREADY_SUBMITTED_LEGAL_REVIEW,
     FILTER_REASON_DELETE_REQUESTED,
     FILTER_REASON_AUTOSUBMIT_DISABLED,
     FILTER_REASON_OUT_OF_DATE_STATUS
@@ -790,6 +794,12 @@ class AutoSubmitWorker:
                 print >>sys.stderr, 'Ignoring request with no request id.'
                 continue
 
+            manual_legal_review = False
+            for review_node in request_node.findall('review'):
+                by_group = review_node.get('by_group')
+                if by_group == 'legal-team':
+                    manual_legal_review = True
+
             for action_node in request_node.findall('action'):
                 action_type = action_node.get('type')
                 if not action_type:
@@ -821,7 +831,7 @@ class AutoSubmitWorker:
                         print >>sys.stderr, 'Ignoring submit request %s: source mis-defined.' % request_id
                         continue
 
-                    new = (request_id, source)
+                    new = (request_id, source, manual_legal_review)
                     if not self._submit_requests.has_key(key):
                         requests = [ new ]
                     else:
@@ -961,7 +971,7 @@ class AutoSubmitWorker:
         # See hash documentation in AutoSubmitPackage for why we use state_hash
         # and not unexpanded_state_hash
         # We explicitly do not use the cache for the reasons that might not be valid anymore
-        if cached_devel_project == devel_package.project and cached_devel_package == devel_package.package and cached_devel_state_hash == devel_package.state_hash and cached_reason not in [FILTER_REASON_DELETE_REQUESTED, FILTER_REASON_AUTOSUBMIT_DISABLED, FILTER_REASON_TOO_RECENT]:
+        if cached_devel_project == devel_package.project and cached_devel_package == devel_package.package and cached_devel_state_hash == devel_package.state_hash and cached_reason not in [FILTER_REASON_DELETE_REQUESTED, FILTER_REASON_AUTOSUBMIT_DISABLED, FILTER_REASON_TOO_RECENT, FILTER_REASON_ALREADY_SUBMITTED_LEGAL_REVIEW]:
             self._verbose_print('Not submitting %s to %s: changes already seen in the past [%s].' % (devel_package, parent_package, _get_reason_text(cached_reason, cached_reason_data)))
             if cached_reason == FILTER_REASON_AUTOSUBMITTED:
                 cached_reason = FILTER_REASON_ALREADY_AUTOSUBMITTED
@@ -998,8 +1008,9 @@ class AutoSubmitWorker:
         # b.3. There is already an open submit request; we need to see if this is for the current state of the source package.
         if self._submit_requests.has_key(str(parent_package)):
             old_sr = None
+            old_manual_legal_review = False
             requests = self._submit_requests[str(parent_package)]
-            for (request_id, source) in requests:
+            for (request_id, source, manual_legal_review) in requests:
                 if devel_package != source:
                     continue
 
@@ -1007,7 +1018,15 @@ class AutoSubmitWorker:
                     old_sr = request_id
                     break
 
-            if old_sr is not None:
+                if manual_legal_review:
+                    old_sr = request_id
+                    old_manual_legal_review = True
+                    break
+
+            if old_manual_legal_review:
+                _verbose_print_not_submitting(self, devel_package, parent_package, FILTER_REASON_ALREADY_SUBMITTED_LEGAL_REVIEW, old_sr)
+                return (True, FILTER_REASON_ALREADY_SUBMITTED_LEGAL_REVIEW, old_sr)
+            elif old_sr is not None:
                 _verbose_print_not_submitting(self, devel_package, parent_package, FILTER_REASON_ALREADY_SUBMITTED, old_sr)
                 return (True, FILTER_REASON_ALREADY_SUBMITTED, old_sr)
             else:
