@@ -1106,7 +1106,7 @@ class AutoSubmitWorker:
             print 'Packages already with a submission (%d)' % len(self._submit_requests)
             print '#####################################################'
             for (key, value) in self._submit_requests.items():
-                output = [ 'from %s (%s)' % (str(source), request_id) for (request_id, source) in value ]
+                output = [ 'from %s (%s)' % (str(source), request_id) for (request_id, source, manual_legal_review) in value ]
                 print 'Requests to %s: %s' % (key, ','.join(output))
             print ''
 
