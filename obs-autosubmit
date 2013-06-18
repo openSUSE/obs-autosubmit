@@ -928,6 +928,29 @@ class AutoSubmitWorker:
         return True
 
 
+    def get_min_age_days(self, package):
+        def get_min_age_days_via_attributes(attributes):
+            try:
+                return int(attributes['openSUSE:MinAgeDaysAutoSubmit'])
+            except (KeyError, ValueError):
+                return -1
+
+        package.fetch_attributes(self.conf.apiurl)
+        min_age = get_min_age_days_via_attributes(package.attributes)
+        if min_age != -1:
+            self._verbose_print('Using %d as minimum age for %s, by package attribute.' % (min_age, package), level = 2)
+            return min_age
+
+        if not self._projects_attributes.has_key(package.project):
+            self._projects_attributes[package.project] = fetch_attributes(self.conf.apiurl, package.project)
+        min_age = get_min_age_days_via_attributes(self._projects_attributes[package.project])
+        if min_age != -1:
+            self._verbose_print('Using %d as minimum age for %s, by project attribute.' % (min_age, package), level = 2)
+            return min_age
+
+        return MIN_AGE_DAYS
+
+
     def _should_filter_package(self, devel_package, parent_package):
         ''' To know if we need to create a submit request, we check the
             following:
@@ -1050,7 +1073,7 @@ class AutoSubmitWorker:
 
         # b.5. The last change in the package is not too recent
         timedelta = datetime.timedelta(seconds = int(time.time()) - devel_package.max_mtime)
-        if timedelta.days < MIN_AGE_DAYS:
+        if timedelta.days < self.get_min_age_days(devel_package):
             _verbose_print_not_submitting(self, devel_package, parent_package, FILTER_REASON_TOO_RECENT, str(timedelta.days))
             return (True, FILTER_REASON_TOO_RECENT, str(timedelta.days))
 
