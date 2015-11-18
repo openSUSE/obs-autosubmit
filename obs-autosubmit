@@ -199,7 +199,7 @@ def fetch_status_for_project(apiurl, project):
 #######################################################################
 
 
-def fetch_requests(apiurl, xpath):
+def fetch_requests(apiurl, project, xpath):
     url = core.makeurl(apiurl, ['search', 'request'], ['match=%s' % urllib.quote_plus(xpath)])
 
     try:
@@ -221,13 +221,13 @@ def fetch_requests(apiurl, xpath):
 def fetch_requests_for_project(apiurl, project, package = None):
     xpath = '(action/@type=\'submit\' or action/@type=\'delete\') and (state/@name=\'new\' or state/@name=\'review\') and (action/target/@project=\'%(project)s\' or submit/target/@project=\'%(project)s\')' % { 'project': project }
 
-    return fetch_requests(apiurl, xpath)
+    return fetch_requests(apiurl, project, xpath)
 
 
 def fetch_all_requests_for_package(apiurl, project, package):
     xpath = 'action/@type=\'submit\' and (action/target/@project=\'%(project)s\' or submit/target/@project=\'%(project)s\') and (action/target/@package=\'%(package)s\' or submit/target/@package=\'%(package)s\')' % { 'project': project, 'package': package }
 
-    return fetch_requests(apiurl, xpath)
+    return fetch_requests(apiurl, project, xpath)
 
 
 #######################################################################
