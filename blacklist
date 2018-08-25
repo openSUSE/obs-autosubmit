@@ -6,3 +6,12 @@ devel:libraries:c_c++/gmp
 devel:libraries:c_c++/mpc
 devel:libraries:c_c++/mpfr
 devel:libraries:c_c++/ppl
+# Requested by Mark Post
+Base:System/s390-tools
+Base:System/snipl
+devel:openSUSE:Factory/libica
+hardware/qclib
+network/smc-tools
+security/openCryptoki
+security:tls/openssl-ibmca
+security:tls/openssl-ibmpkcs11
