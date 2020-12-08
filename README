@@ -25,11 +25,6 @@ and main project to use.
 The --verbose option is useful in order to watch what obs-autosubmit is
 deciding,
 
-To protect against running this tool twice at the same time (which would be
-expensive in terms of interaction with the OBS server), obs-autosubmit has some
-(very basic) lock mechanism. In case obs-autosubmit is locked with no reason,
-just remove the file "running" from the cache directory.
-
 
 Disabling autosubmit behavior for a project or a package
 ========================================================
