@@ -1217,28 +1217,6 @@ class AutoSubmitWorker:
 #######################################################################
 
 
-def lock_run(conf):
-    # FIXME: this is racy, we need a real lock file. Or use an atomic operation
-    # like mkdir instead
-    running_file = os.path.join(conf.cache_dir, 'running')
-
-    if os.path.exists(running_file):
-        return False
-
-    open(running_file, 'w').write('')
-
-    return True
-
-
-def unlock_run(conf):
-    running_file = os.path.join(conf.cache_dir, 'running')
-
-    os.unlink(running_file)
-
-
-#######################################################################
-
-
 def main(args):
     parser = optparse.OptionParser()
 
@@ -1290,10 +1268,6 @@ def main(args):
             return 1
 
     try:
-        if not lock_run(conf):
-            print('Another instance of the script is running.', file=sys.stderr)
-            return 1
-
         worker = AutoSubmitWorker(conf)
 
         retval = 1
@@ -1314,8 +1288,6 @@ def main(args):
         # Handle this nicely as we want to remove the lock
         print('Interrupted...')
         retval = 0
-
-    unlock_run(conf)
 
     return retval
 
