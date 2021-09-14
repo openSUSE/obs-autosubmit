@@ -895,7 +895,7 @@ class AutoSubmitWorker:
                 # Can't handle that, really
                 return False
             if type(value) != str:
-                print('Unexpected attribute type: %s' (type(value),), file=sys.stderr)
+                print('Unexpected attribute type: %s' % (type(value),), file=sys.stderr)
                 return False
             return value.lower() in [ 'true', 'on', '1' ]
 
