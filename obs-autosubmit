@@ -391,6 +391,8 @@ class AutoSubmitPackage:
         self.state_hash = state_hash
         self.unexpanded_state_hash = unexpanded_state_hash
         self.rev = rev
+        # All revs which refer to the current package's state
+        self.revs = set()
         self.changes_hash = changes_hash
         self.max_mtime = max_mtime
         self.attributes = None
@@ -422,6 +424,9 @@ class AutoSubmitPackage:
 
         # Update changes_hash
         directory_node = fetch_package_files_metadata(apiurl, self.project, self.package, expand = True)
+
+        # Numeric revision, expanded srcmd5 and unexpanded srcmd5
+        self.revs = set([rev, sourceinfo_node.get('srcmd5'), sourceinfo_node.get('lsrcmd5')])
 
         self.changes_md5 = None
 
@@ -873,7 +878,7 @@ class AutoSubmitWorker:
                     print('Ignoring request %s: source mis-defined.' % request_id, file=sys.stderr)
                     continue
 
-                if devel_package == source and devel_package.rev == source.rev:
+                if devel_package == source and source.rev in devel_package.revs:
                     return request_id
 
         return None
@@ -1029,7 +1034,7 @@ class AutoSubmitWorker:
                 if devel_package != source:
                     continue
 
-                if source.rev == devel_package.rev:
+                if source.rev in devel_package.revs:
                     old_sr = request_id
                     break
 
