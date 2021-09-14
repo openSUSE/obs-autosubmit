@@ -1058,7 +1058,7 @@ class AutoSubmitWorker:
             parent_package.fetch_latest_package_state(self.conf.apiurl, nodetails = True)
             # See hash documentation in AutoSubmitPackage for why we use
             # state_hash and not unexpanded_state_hash
-            if parent_package.state_hash ==  devel_package.state_hash:
+            if parent_package.state_hash == devel_package.state_hash:
                 _verbose_print_not_submitting(self, devel_package, parent_package, FILTER_REASON_OUT_OF_DATE_STATUS, None)
                 return (True, FILTER_REASON_OUT_OF_DATE_STATUS, None)
 
