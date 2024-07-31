@@ -46,7 +46,6 @@ import re
 import sqlite3
 import time
 import traceback
-import urllib
 from urllib.error import HTTPError
 from xml.etree import cElementTree as ET
 
