@@ -605,7 +605,7 @@ class AutoSubmitCache:
 
 
     def start_run(self):
-        if self.run_id != None:
+        if self.run_id is not None:
             raise AutoSubmitUnlikelyException('Cannot add a new run to cache database: already running!')
 
         self.cursor.execute('''INSERT INTO run VALUES (NULL, ?, ?, datetime('now'), 0);''', (self.conf.apiurl, self.conf.project))
@@ -924,7 +924,7 @@ class AutoSubmitWorker:
             if 'openSUSE:DisableAutoSubmit' not in attributes:
                 return False
             value = attributes['openSUSE:DisableAutoSubmit']
-            if type(value) == list:
+            if isinstance(value, list):
                 # Can't handle that, really
                 return False
             if type(value) != str:
