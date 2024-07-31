@@ -281,7 +281,7 @@ def fetch_package_info(apiurl, project, package, revision = None):
 def has_scmsync(apiurl, project, package = None):
     if package:
         url = core.makeurl(apiurl, ['source', project, package, '_meta'])
-        err_str = '%s/%s' % (package, project)
+        err_str = f'{package}/{project}'
     else:
         url = core.makeurl(apiurl, ['source', project, '_meta'])
         err_str = project
@@ -289,13 +289,13 @@ def has_scmsync(apiurl, project, package = None):
     try:
         fin = core.http_GET(url)
     except HTTPError as e:
-        raise AutoSubmitException('Cannot get _meta of %s: %s' % (err_str, e))
+        raise AutoSubmitException(f'Cannot get _meta of {err_str}: {e}')
 
     try:
         meta_node = ET.parse(fin).getroot()
     except SyntaxError as e:
         fin.close()
-        raise AutoSubmitException('Cannot parse _meta of %s: %s' % (err_str, e))
+        raise AutoSubmitException(f'Cannot parse _meta of {err_str}: {e}')
 
     fin.close()
 
@@ -382,13 +382,13 @@ def create_submit_request(apiurl, source_project, source_package, rev, target_pr
     try:
         fin = core.http_POST(url, data=xml)
     except HTTPError as e:
-        raise AutoSubmitException('Cannot submit %s to %s: %s' % (source_project, source_package, target_project, target_package, e))
+        raise AutoSubmitException(f'Cannot submit {source_project}/{source_package} to {target_project}/{target_package}: {e}')
 
     try:
         node = ET.parse(fin).getroot()
     except SyntaxError as e:
         fin.close()
-        raise AutoSubmitException('Cannot parse result of submission of %s to %s: %s' % (source_project, source_package, target_project, target_package, e))
+        raise AutoSubmitException(f'Cannot parse result of submission of {source_project}/{source_package} to {target_project}/{target_package}: {e}')
 
     fin.close()
 
