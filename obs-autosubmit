@@ -855,14 +855,14 @@ class AutoSubmitWorker:
                         continue
 
                     new = (request_id, source, manual_legal_review)
-                    if not key in self._submit_requests:
+                    if key not in self._submit_requests:
                         requests = [ new ]
                     else:
                         requests = self._submit_requests[key]
                         requests.append(new)
                     self._submit_requests[key] = requests
                 elif action_type == 'delete':
-                    if not key in self._delete_requests:
+                    if key not in self._delete_requests:
                         requests = [ request_id ]
                     else:
                         requests = self._delete_requests[key].append(key)
@@ -921,7 +921,7 @@ class AutoSubmitWorker:
             We first check if it's disabled for the project.
         '''
         def is_disabled_via_attribute(attributes):
-            if not 'openSUSE:DisableAutoSubmit' in attributes:
+            if 'openSUSE:DisableAutoSubmit' not in attributes:
                 return False
             value = attributes['openSUSE:DisableAutoSubmit']
             if type(value) == list:
@@ -938,7 +938,7 @@ class AutoSubmitWorker:
         if str(package) in self._blacklisted_packages:
             return False
 
-        if not package.project in self._projects_attributes:
+        if package.project not in self._projects_attributes:
             self._projects_attributes[package.project] = fetch_attributes(self.conf.apiurl, package.project)
         if is_disabled_via_attribute(self._projects_attributes[package.project]):
             self._verbose_print(f'Auto-submit for {package} disabled by project attribute.', level = 2)
@@ -970,7 +970,7 @@ class AutoSubmitWorker:
             self._verbose_print('Using %d as minimum age for %s, by package attribute.' % (min_age, package), level = 2)
             return min_age
 
-        if not package.project in self._projects_attributes:
+        if package.project not in self._projects_attributes:
             self._projects_attributes[package.project] = fetch_attributes(self.conf.apiurl, package.project)
         min_age = get_min_age_days_via_attributes(self._projects_attributes[package.project])
         if min_age != -1:
