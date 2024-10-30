@@ -329,9 +329,9 @@ def fetch_attributes(apiurl, project, package = None):
 
 def create_submit_request(apiurl, source_project, source_package, rev, target_project, target_package):
     request = ET.Element('request')
-    request.set('type', 'submit')
 
-    submit = ET.SubElement(request, 'submit')
+    submit = ET.SubElement(request, 'action')
+    submit.set('type', 'submit')
 
     source = ET.SubElement(submit, 'source')
     source.set('project', source_project)
