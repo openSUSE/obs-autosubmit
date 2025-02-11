@@ -46,7 +46,6 @@ import re
 import sqlite3
 import time
 import traceback
-import urllib
 from urllib.error import HTTPError
 from xml.etree import cElementTree as ET
 
@@ -282,7 +281,7 @@ def fetch_package_info(apiurl, project, package, revision = None):
 def has_scmsync(apiurl, project, package = None):
     if package:
         url = core.makeurl(apiurl, ['source', project, package, '_meta'])
-        err_str = '%s/%s' % (package, project)
+        err_str = f'{package}/{project}'
     else:
         url = core.makeurl(apiurl, ['source', project, '_meta'])
         err_str = project
@@ -290,13 +289,13 @@ def has_scmsync(apiurl, project, package = None):
     try:
         fin = core.http_GET(url)
     except HTTPError as e:
-        raise AutoSubmitException('Cannot get _meta of %s: %s' % (err_str, e))
+        raise AutoSubmitException(f'Cannot get _meta of {err_str}: {e}')
 
     try:
         meta_node = ET.parse(fin).getroot()
     except SyntaxError as e:
         fin.close()
-        raise AutoSubmitException('Cannot parse _meta of %s: %s' % (err_str, e))
+        raise AutoSubmitException(f'Cannot parse _meta of {err_str}: {e}')
 
     fin.close()
 
@@ -383,13 +382,13 @@ def create_submit_request(apiurl, source_project, source_package, rev, target_pr
     try:
         fin = core.http_POST(url, data=xml)
     except HTTPError as e:
-        raise AutoSubmitException('Cannot submit %s to %s: %s' % (source_project, source_package, target_project, target_package, e))
+        raise AutoSubmitException(f'Cannot submit {source_project}/{source_package} to {target_project}/{target_package}: {e}')
 
     try:
         node = ET.parse(fin).getroot()
     except SyntaxError as e:
         fin.close()
-        raise AutoSubmitException('Cannot parse result of submission of %s to %s: %s' % (source_project, source_package, target_project, target_package, e))
+        raise AutoSubmitException(f'Cannot parse result of submission of {source_project}/{source_package} to {target_project}/{target_package}: {e}')
 
     fin.close()
 
@@ -606,7 +605,7 @@ class AutoSubmitCache:
 
 
     def start_run(self):
-        if self.run_id != None:
+        if self.run_id is not None:
             raise AutoSubmitUnlikelyException('Cannot add a new run to cache database: already running!')
 
         self.cursor.execute('''INSERT INTO run VALUES (NULL, ?, ?, datetime('now'), 0);''', (self.conf.apiurl, self.conf.project))
@@ -856,14 +855,14 @@ class AutoSubmitWorker:
                         continue
 
                     new = (request_id, source, manual_legal_review)
-                    if not key in self._submit_requests:
+                    if key not in self._submit_requests:
                         requests = [ new ]
                     else:
                         requests = self._submit_requests[key]
                         requests.append(new)
                     self._submit_requests[key] = requests
                 elif action_type == 'delete':
-                    if not key in self._delete_requests:
+                    if key not in self._delete_requests:
                         requests = [ request_id ]
                     else:
                         requests = self._delete_requests[key].append(key)
@@ -922,10 +921,10 @@ class AutoSubmitWorker:
             We first check if it's disabled for the project.
         '''
         def is_disabled_via_attribute(attributes):
-            if not 'openSUSE:DisableAutoSubmit' in attributes:
+            if 'openSUSE:DisableAutoSubmit' not in attributes:
                 return False
             value = attributes['openSUSE:DisableAutoSubmit']
-            if type(value) == list:
+            if isinstance(value, list):
                 # Can't handle that, really
                 return False
             if type(value) != str:
@@ -939,7 +938,7 @@ class AutoSubmitWorker:
         if str(package) in self._blacklisted_packages:
             return False
 
-        if not package.project in self._projects_attributes:
+        if package.project not in self._projects_attributes:
             self._projects_attributes[package.project] = fetch_attributes(self.conf.apiurl, package.project)
         if is_disabled_via_attribute(self._projects_attributes[package.project]):
             self._verbose_print(f'Auto-submit for {package} disabled by project attribute.', level = 2)
@@ -971,7 +970,7 @@ class AutoSubmitWorker:
             self._verbose_print('Using %d as minimum age for %s, by package attribute.' % (min_age, package), level = 2)
             return min_age
 
-        if not package.project in self._projects_attributes:
+        if package.project not in self._projects_attributes:
             self._projects_attributes[package.project] = fetch_attributes(self.conf.apiurl, package.project)
         min_age = get_min_age_days_via_attributes(self._projects_attributes[package.project])
         if min_age != -1:
