@@ -279,6 +279,34 @@ def fetch_package_info(apiurl, project, package, revision = None):
 
 #######################################################################
 
+def has_scmsync(apiurl, project, package = None):
+    if package:
+        url = core.makeurl(apiurl, ['source', project, package, '_meta'])
+        err_str = '%s/%s' % (package, project)
+    else:
+        url = core.makeurl(apiurl, ['source', project, '_meta'])
+        err_str = project
+
+    try:
+        fin = core.http_GET(url)
+    except HTTPError as e:
+        raise AutoSubmitException('Cannot get _meta of %s: %s' % (err_str, e))
+
+    try:
+        meta_node = ET.parse(fin).getroot()
+    except SyntaxError as e:
+        fin.close()
+        raise AutoSubmitException('Cannot parse _meta of %s: %s' % (err_str, e))
+
+    fin.close()
+
+    if meta_node and meta_node.find('scmsync') is not None:
+        return True
+    return False
+
+
+#######################################################################
+
 
 def fetch_attributes(apiurl, project, package = None):
     if package:
@@ -851,7 +879,8 @@ class AutoSubmitWorker:
                 print('Ignoring request with no request id.', file=sys.stderr)
                 continue
 
-# FIXME: this is really only a workaround needed because of a test run where autosubmit was not disabled. Can be dropped after the first real run.
+            # FIXME: this is really only a workaround needed because of a test run where
+            # autosubmit was not disabled. Can be dropped after the first real run.
             try:
                 if int(request_id) in range(102244,102266+1):
                     continue
@@ -921,8 +950,13 @@ class AutoSubmitWorker:
             self._verbose_print('Auto-submit for %s disabled by package attribute.' % package, level = 2)
             return False
 
-        return True
+        self._verbose_print(f'checking for autosubmit on project {package.project} package {package.package}', level = 2)
 
+        if has_scmsync(self.conf.apiurl, package.project, package.package):
+            self._verbose_print(f'Auto-submit for {package} disabled due to scmsync set.', level = 2)
+            return False
+
+        return True
 
     def get_min_age_days(self, package):
         def get_min_age_days_via_attributes(attributes):
