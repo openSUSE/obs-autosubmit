@@ -174,13 +174,13 @@ def fetch_status_for_project(apiurl, project):
     try:
         fin = core.http_GET(url)
     except HTTPError as e:
-        raise AutoSubmitException('Cannot get status of %s: %s' % (project, e))
+        raise AutoSubmitException(f'Cannot get status of {project}: {e}')
 
     try:
         node = ET.parse(fin).getroot()
     except SyntaxError as e:
         fin.close()
-        raise AutoSubmitException('Cannot parse status of %s: %s' % (project, e))
+        raise AutoSubmitException(f'Cannot parse status of {project}: {e}')
 
     fin.close()
 
@@ -196,13 +196,13 @@ def fetch_requests(apiurl, project, xpath):
     try:
         fin = core.http_GET(url)
     except HTTPError as e:
-        raise AutoSubmitException('Cannot get requests submitted to %s: %s' % (project, e))
+        raise AutoSubmitException(f'Cannot get requests submitted to {project}: {e}')
 
     try:
         node = ET.parse(fin).getroot()
     except SyntaxError as e:
         fin.close()
-        raise AutoSubmitException('Cannot parse requests submitted to %s: %s' % (project, e))
+        raise AutoSubmitException(f'Cannot parse requests submitted to {project}: {e}')
 
     fin.close()
 
@@ -237,14 +237,14 @@ def fetch_package_files_metadata(apiurl, project, package, revision = None, expa
         fin = core.http_GET(url)
     except HTTPError as e:
         if e.code == 400:
-            raise AutoSubmitException('Broken package %s/%s: %s' % (project, package, e.msg))
-        raise AutoSubmitException('Cannot get files metadata of %s/%s: %s' % (project, package, e))
+            raise AutoSubmitException(f'Broken package {project}/{package}: {e.msg}')
+        raise AutoSubmitException(f'Cannot get files metadata of {project}/{package}: {e}')
 
     try:
         node = ET.parse(fin).getroot()
     except SyntaxError as e:
         fin.close()
-        raise AutoSubmitException('Cannot parse files metadata of %s/%s: %s' % (project, package, e))
+        raise AutoSubmitException(f'Cannot parse files metadata of {project}/{package}: {e}')
 
     fin.close()
 
@@ -264,13 +264,13 @@ def fetch_package_info(apiurl, project, package, revision = None):
     try:
         fin = core.http_GET(url)
     except HTTPError as e:
-        raise AutoSubmitException('Cannot get info of %s/%s: %s' % (project, package, e))
+        raise AutoSubmitException(f'Cannot get info of {project}/{package}: {e}')
 
     try:
         node = ET.parse(fin).getroot()
     except SyntaxError as e:
         fin.close()
-        raise AutoSubmitException('Cannot parse info of %s/%s: %s' % (project, package, e))
+        raise AutoSubmitException(f'Cannot parse info of {project}/{package}: {e}')
 
     fin.close()
 
@@ -283,7 +283,7 @@ def fetch_package_info(apiurl, project, package, revision = None):
 def fetch_attributes(apiurl, project, package = None):
     if package:
         url = core.makeurl(apiurl, ['source', project, package, '_attribute'])
-        err_str = '%s/%s' % (package, project)
+        err_str = f'{package}/{project}'
     else:
         url = core.makeurl(apiurl, ['source', project, '_attribute'])
         err_str = project
@@ -291,13 +291,13 @@ def fetch_attributes(apiurl, project, package = None):
     try:
         fin = core.http_GET(url)
     except HTTPError as e:
-        raise AutoSubmitException('Cannot get attributes of %s: %s' % (err_str, e))
+        raise AutoSubmitException(f'Cannot get attributes of {err_str}: {e}')
 
     try:
         attributes_node = ET.parse(fin).getroot()
     except SyntaxError as e:
         fin.close()
-        raise AutoSubmitException('Cannot parse attributes of %s: %s' % (err_str, e))
+        raise AutoSubmitException(f'Cannot parse attributes of {err_str}: {e}')
 
     fin.close()
 
@@ -308,7 +308,7 @@ def fetch_attributes(apiurl, project, package = None):
         name = attribute_node.get('name')
 
         if not namespace or not name:
-            print('Ignoring an attribute of %s with missing namespace or name.' % err_str, file=sys.stderr)
+            print(f'Ignoring an attribute of {err_str} with missing namespace or name.', file=sys.stderr)
             continue
 
         value = []
@@ -319,7 +319,7 @@ def fetch_attributes(apiurl, project, package = None):
         elif len(value) == 1:
             value = value[0]
 
-        attributes['%s:%s' % (namespace, name)] = value
+        attributes[f'{namespace}:{name}'] = value
 
     return attributes
 
@@ -406,7 +406,7 @@ class AutoSubmitPackage:
         state_hash = sourceinfo_node.get('verifymd5') or unexpanded_state_hash
 
         if not rev or not unexpanded_state_hash:
-            raise AutoSubmitException('Cannot fetch current state of %s' % (self,))
+            raise AutoSubmitException(f'Cannot fetch current state of {self}')
 
         self.rev = rev
         self.unexpanded_state_hash = unexpanded_state_hash
@@ -442,9 +442,9 @@ class AutoSubmitPackage:
             self.max_mtime = max(mtime, self.max_mtime)
 
             if name.endswith('.changes') and not md5:
-                raise AutoSubmitException('Cannot fetch hash of changes file for %s' % (self,))
+                raise AutoSubmitException(f'Cannot fetch hash of changes file for {self}')
 
-            if name == '%s.changes' % self.package:
+            if name == f'{self.package}.changes':
                 self.changes_md5 = md5
 
 
@@ -470,7 +470,7 @@ class AutoSubmitPackage:
             max_mtime = 0
 
         if not expanded_md5:
-            raise AutoSubmitUnlikelyException('no state hash for %s/%s (?)' % (project, package))
+            raise AutoSubmitUnlikelyException(f'no state hash for {project}/{package} (?)')
 
         return AutoSubmitPackage(project, package, state_hash = expanded_md5, unexpanded_state_hash = unexpanded_md5, changes_hash = changes_md5, max_mtime = max_mtime)
 
@@ -522,7 +522,7 @@ class AutoSubmitPackage:
         return other.__eq__(self) or other.__lt__(self)
 
     def __str__(self):
-        return '%s/%s' % (self.project, self.package)
+        return f'{self.project}/{self.package}'
 
 
 #######################################################################
@@ -558,7 +558,7 @@ class AutoSubmitCache:
         if os.path.exists(self._dbfile):
             create = False
             if not os.access(self._dbfile, os.W_OK):
-                raise AutoSubmitUnlikelyException('\'%s\' is read-only. Cache database must be writable.' % self._dbfile)
+                raise AutoSubmitUnlikelyException(f'\'{self._dbfile}\' is read-only. Cache database must be writable.')
         else:
             dirname = os.path.dirname(self._dbfile)
             if not os.path.exists(dirname):
@@ -711,13 +711,13 @@ class AutoSubmitWorker:
             items = line.split('/')
 
             if len(items) > 2:
-                print('Ignoring weird blacklist line: %s' % line, file=sys.stderr)
+                print(f'Ignoring weird blacklist line: {line}', file=sys.stderr)
                 continue
 
             if len(items) == 1 or not items[1]:
                 self._blacklisted_projects.append(items[0])
             else:
-                self._blacklisted_packages.append('%s/%s' % (items[0], items[1]))
+                self._blacklisted_packages.append(f'{items[0]}/{items[1]}')
 
 
     def _fetch_packages_with_diff(self):
@@ -730,11 +730,11 @@ class AutoSubmitWorker:
             try:
                 parent_package = AutoSubmitPackage.from_status_node(package_node)
             except AutoSubmitUnlikelyException as e:
-                print('Cannot get package: %s' % e, file=sys.stderr)
+                print(f'Cannot get package: {e}', file=sys.stderr)
                 continue
 
             if parent_package.project != self.conf.project:
-                print('%s found as parent package while auto-submitting to %s.' % (parent_package, self.conf.project), file=sys.stderr)
+                print(f'{parent_package} found as parent package while auto-submitting to {self.conf.project}.', file=sys.stderr)
                 continue
 
             develpack_node = package_node.find('develpack')
@@ -747,13 +747,13 @@ class AutoSubmitWorker:
                         break
 
                 if not safe:
-                    print('No devel package for %s.' % parent_package, file=sys.stderr)
+                    print(f'No devel package for {parent_package}.', file=sys.stderr)
                 continue
 
             try:
                 devel_package = AutoSubmitPackage.from_status_develpack_node(develpack_node)
             except AutoSubmitUnlikelyException as e:
-                print('Cannot get devel package for %s: %s' % (parent_package, e), file=sys.stderr)
+                print(f'Cannot get devel package for {parent_package}: {e}', file=sys.stderr)
                 continue
 
             # See hash documentation in AutoSubmitPackage for why we use
@@ -763,12 +763,12 @@ class AutoSubmitWorker:
 
             if devel_package.project == self.conf.project:
                 if str(parent_package) not in INTERNAL_LINK_DIFFERENT_HASH_SAFE:
-                    print('Devel package %s (for %s) belongs to target project %s but state hash is different: this should never happen.' % (devel_package, parent_package, self.conf.project), file=sys.stderr)
+                    print(f'Devel package {devel_package} (for {parent_package}) belongs to target project {self.conf.project} but state hash is different: this should never happen.', file=sys.stderr)
                 continue
 
             hash_key = str(parent_package)
             if hash_key in with_diff_hash:
-                print('%s appearing twice as parent package.' % parent_package, file=sys.stderr)
+                print(f'{parent_package} appearing twice as parent package.', file=sys.stderr)
                 continue
 
             with_diff_hash[hash_key] = True
@@ -799,11 +799,11 @@ class AutoSubmitWorker:
             for action_node in request_node.findall('action'):
                 action_type = action_node.get('type')
                 if not action_type:
-                    print('Ignoring request %s: no action type.' % request_id, file=sys.stderr)
+                    print(f'Ignoring request {request_id}: no action type.', file=sys.stderr)
                     continue
 
                 if action_type not in ('submit', 'delete'):
-                    print('Ignoring request %s: action type \'%s\' not expected.' % (request_id, action_type), file=sys.stderr)
+                    print(f'Ignoring request {request_id}: action type \'{action_type}\' not expected.', file=sys.stderr)
                     continue
 
                 source = None
@@ -817,14 +817,14 @@ class AutoSubmitWorker:
                     target = AutoSubmitPackage.from_request_node(target_node)
 
                 if not target:
-                    print('Ignoring request %s: target mis-defined.' % request_id, file=sys.stderr)
+                    print(f'Ignoring request {request_id}: target mis-defined.', file=sys.stderr)
                     continue
 
                 key = str(target)
 
                 if action_type == 'submit':
                     if not source:
-                        print('Ignoring submit request %s: source mis-defined.' % request_id, file=sys.stderr)
+                        print(f'Ignoring submit request {request_id}: source mis-defined.', file=sys.stderr)
                         continue
 
                     new = (request_id, source, manual_legal_review)
@@ -861,11 +861,11 @@ class AutoSubmitWorker:
             for action_node in request_node.findall('action'):
                 action_type = action_node.get('type')
                 if not action_type:
-                    print('Ignoring request %s: no action type.' % request_id, file=sys.stderr)
+                    print(f'Ignoring request {request_id}: no action type.', file=sys.stderr)
                     continue
 
                 if action_type not in ('submit',):
-                    print('Ignoring request %s: action type \'%s\' not expected.' % (request_id, action_type), file=sys.stderr)
+                    print(f'Ignoring request {request_id}: action type \'{action_type}\' not expected.', file=sys.stderr)
                     continue
 
                 source = None
@@ -875,7 +875,7 @@ class AutoSubmitWorker:
                     source = AutoSubmitPackage.from_request_node(source_node)
 
                 if not source:
-                    print('Ignoring request %s: source mis-defined.' % request_id, file=sys.stderr)
+                    print(f'Ignoring request {request_id}: source mis-defined.', file=sys.stderr)
                     continue
 
                 if devel_package == source and source.rev in devel_package.revs:
@@ -900,7 +900,7 @@ class AutoSubmitWorker:
                 # Can't handle that, really
                 return False
             if type(value) != str:
-                print('Unexpected attribute type: %s' % (type(value),), file=sys.stderr)
+                print(f'Unexpected attribute type: {type(value)}', file=sys.stderr)
                 return False
             return value.lower() in [ 'true', 'on', '1' ]
 
@@ -913,12 +913,12 @@ class AutoSubmitWorker:
         if not package.project in self._projects_attributes:
             self._projects_attributes[package.project] = fetch_attributes(self.conf.apiurl, package.project)
         if is_disabled_via_attribute(self._projects_attributes[package.project]):
-            self._verbose_print('Auto-submit for %s disabled by project attribute.' % package, level = 2)
+            self._verbose_print(f'Auto-submit for {package} disabled by project attribute.', level = 2)
             return False
 
         package.fetch_attributes(self.conf.apiurl)
         if is_disabled_via_attribute(package.attributes):
-            self._verbose_print('Auto-submit for %s disabled by package attribute.' % package, level = 2)
+            self._verbose_print(f'Auto-submit for {package} disabled by package attribute.', level = 2)
             return False
 
         return True
@@ -984,7 +984,7 @@ class AutoSubmitWorker:
 
         def _verbose_print_not_submitting(self, devel_package, parent_package, reason, reason_data):
             reason_text = _get_reason_text(reason, reason_data)
-            self._verbose_print('Not submitting %s to %s: %s.' % (devel_package, parent_package, reason_text))
+            self._verbose_print(f'Not submitting {devel_package} to {parent_package}: {reason_text}.')
 
         # a.1. Was already seen/handled in the past; this cache is not completely useless! ;-)
         (cached_devel_project, cached_devel_package, cached_devel_state_hash, cached_reason, cached_reason_data) = self._cache.get_from_cache(parent_package.project, parent_package.package)
@@ -992,7 +992,7 @@ class AutoSubmitWorker:
         # and not unexpanded_state_hash
         # We explicitly do not use the cache for the reasons that might not be valid anymore
         if cached_devel_project == devel_package.project and cached_devel_package == devel_package.package and cached_devel_state_hash == devel_package.state_hash and cached_reason not in [FILTER_REASON_DELETE_REQUESTED, FILTER_REASON_AUTOSUBMIT_DISABLED, FILTER_REASON_TOO_RECENT, FILTER_REASON_ALREADY_SUBMITTED_LEGAL_REVIEW]:
-            self._verbose_print('Not submitting %s to %s: changes already seen in the past [%s].' % (devel_package, parent_package, _get_reason_text(cached_reason, cached_reason_data)))
+            self._verbose_print(f'Not submitting {devel_package} to {parent_package}: changes already seen in the past [{_get_reason_text(cached_reason, cached_reason_data)}].')
             if cached_reason == FILTER_REASON_AUTOSUBMITTED:
                 cached_reason = FILTER_REASON_ALREADY_AUTOSUBMITTED
             return (True, cached_reason, cached_reason_data)
@@ -1050,7 +1050,7 @@ class AutoSubmitWorker:
                 _verbose_print_not_submitting(self, devel_package, parent_package, FILTER_REASON_ALREADY_SUBMITTED, old_sr)
                 return (True, FILTER_REASON_ALREADY_SUBMITTED, old_sr)
             else:
-                self._verbose_print('Should submit %s to %s with newer version.' % (devel_package, parent_package))
+                self._verbose_print(f'Should submit {devel_package} to {parent_package} with newer version.')
 
         # b.4. There was a submit request (even if revoked, superseded, etc.) with the same state in the devel package
         old_sr = self._devel_package_check_already_submitted(devel_package, parent_package)
@@ -1078,16 +1078,16 @@ class AutoSubmitWorker:
 
     def _do_auto_submit(self, devel_package, parent_package):
         if self.conf.debug:
-            self._verbose_print('Pretending to submit %s to %s (debug mode)' % (devel_package, parent_package))
+            self._verbose_print(f'Pretending to submit {devel_package} to {parent_package} (debug mode)')
             return 0
 
-        self._verbose_print('Submitting %s to %s' % (devel_package, parent_package))
+        self._verbose_print(f'Submitting {devel_package} to {parent_package}')
         try:
             id = create_submit_request(self.conf.apiurl, devel_package.project, devel_package.package, devel_package.rev, parent_package.project, parent_package.package)
             self._verbose_print('Submitted %s to %s: %d' % (devel_package, parent_package, id), level = 2)
             return id
         except AutoSubmitException as e:
-            print('Failed to submit %s to %s: %s' % (devel_package, parent_package, e), file=sys.stderr)
+            print(f'Failed to submit {devel_package} to {parent_package}: {e}', file=sys.stderr)
         return 0
 
 
@@ -1097,14 +1097,14 @@ class AutoSubmitWorker:
         self._read_blacklist()
         if self.conf.debug:
             print('#####################################################')
-            print('%d blacklisted projects' % len(self._blacklisted_projects))
+            print(f'{len(self._blacklisted_projects)} blacklisted projects')
             print('#####################################################')
             for project in self._blacklisted_projects:
                 print(project)
             print('')
 
             print('#####################################################')
-            print('%d blacklisted packages' % len(self._blacklisted_packages))
+            print(f'{len(self._blacklisted_packages)} blacklisted packages')
             print('#####################################################')
             for package in self._blacklisted_packages:
                 print(package)
@@ -1113,27 +1113,27 @@ class AutoSubmitWorker:
         self._fetch_packages_with_diff()
         if self.conf.debug:
             print('#####################################################')
-            print('Packages with a diff (%d)' % len(self._packages_with_diff))
+            print(f'Packages with a diff ({len(self._packages_with_diff)})')
             print('#####################################################')
             for (devel_package, parent_package) in self._packages_with_diff:
-                print('%s -> %s' % (str(devel_package), str(parent_package)))
+                print(f'{str(devel_package)} -> {str(parent_package)}')
             print('')
 
         self._fetch_existing_requests()
         if self.conf.debug:
             print('#####################################################')
-            print('Packages already with a submission (%d)' % len(self._submit_requests))
+            print(f'Packages already with a submission ({len(self._submit_requests)})')
             print('#####################################################')
             for (key, value) in self._submit_requests.items():
-                output = [ 'from %s (%s)' % (str(source), request_id) for (request_id, source, manual_legal_review) in value ]
-                print('Requests to %s: %s' % (key, ','.join(output)))
+                output = [ f'from {str(source)} ({request_id})' for (request_id, source, manual_legal_review) in value ]
+                print(f"Requests to {key}: {','.join(output)}")
             print('')
 
             print('#####################################################')
-            print('Packages scheduled for deletion (%d)' % len(self._delete_requests))
+            print(f'Packages scheduled for deletion ({len(self._delete_requests)})')
             print('#####################################################')
             for (key, value) in self._delete_requests.items():
-                print('Delete requests for %s: %s' % (key, ','.join(value)))
+                print(f"Delete requests for {key}: {','.join(value)}")
             print('')
 
             print('#####################################################')
@@ -1151,10 +1151,10 @@ class AutoSubmitWorker:
                     if should_filter:
                         update_cache = True
                         if self.conf.debug:
-                            print('Filtered %s -> %s' % (str(devel_package), str(parent_package)))
+                            print(f'Filtered {str(devel_package)} -> {str(parent_package)}')
                     else:
                         if self.conf.debug:
-                            print('Submitting %s -> %s' % (str(devel_package), str(parent_package)))
+                            print(f'Submitting {str(devel_package)} -> {str(parent_package)}')
                         sr_id = self._do_auto_submit(devel_package, parent_package)
                         if sr_id > 0:
                             filter_reason = FILTER_REASON_AUTOSUBMITTED
@@ -1162,7 +1162,7 @@ class AutoSubmitWorker:
                             update_cache = True
                 except AutoSubmitException as e:
                     # Put a small prefix to clearly show that this is harmless
-                    print('[note] %s (=> skipping %s to %s)' % (e, devel_package, parent_package), file=sys.stderr)
+                    print(f'[note] {e} (=> skipping {devel_package} to {parent_package})', file=sys.stderr)
 
                 if update_cache:
                     # See hash documentation in AutoSubmitPackage for why we
@@ -1202,16 +1202,16 @@ class AutoSubmitWorker:
         failed = self._cache.count_failed(run_id)
         filtered_stats = self._cache.count_by_reason(run_id)
 
-        print('Successfully processed %s packages with changes in run from %s' % (processed, date_start))
+        print(f'Successfully processed {processed} packages with changes in run from {date_start}')
         if failed > 0:
-            print('Failed to process %s packages :/' % failed)
+            print(f'Failed to process {failed} packages :/')
         if incomplete_run:
             print('NOTE: that run was not fully completed.')
         print('')
 
         for reason in STATS_ORDER:
             if reason in filtered_stats:
-                print('%s: %s' % (FILTER_REASONS_TO_TEXT_STATS[reason], filtered_stats[reason]))
+                print(f'{FILTER_REASONS_TO_TEXT_STATS[reason]}: {filtered_stats[reason]}')
             else:
                 print('%s: %d' % (FILTER_REASONS_TO_TEXT_STATS[reason], 0))
 
@@ -1269,7 +1269,7 @@ def main(args):
         os.makedirs(conf.cache_dir)
     except OSError as e:
         if e.errno != errno.EEXIST:
-            print('Cannot create cache directory: %s' % e, file=sys.stderr)
+            print(f'Cannot create cache directory: {e}', file=sys.stderr)
             return 1
 
     try:
